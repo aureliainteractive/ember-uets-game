@@ -65,6 +65,17 @@ local RANK_COLORS = {
 	["D"]  = Color3.fromRGB(220, 70,  70),
 }
 
+local RANK_STATUS = {
+	["S"]  = "Aprobado",
+	["A+"] = "Aprobado",
+	["A"]  = "Aprobado",
+	["B+"] = "Aprobado",
+	["B"]  = "Aprobado",
+	["C+"] = "Aprobado en el límite",
+	["C"]  = "No aprobado",
+	["D"]  = "No aprobado",
+}
+
 local TWEEN_IN  = TweenInfo.new(0.4, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
 local TWEEN_OUT = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 
@@ -98,7 +109,8 @@ local function populate(payload)
 
 	-- Score block
 	local rank = payload.rank or "D"
-	LabelRank.Text      = rank
+	local status = RANK_STATUS[rank] or "No aprobado"
+	LabelRank.Text      = string.format("%s - Rango %s", status, rank)
 	LabelRank.TextColor3 = RANK_COLORS[rank] or Color3.fromRGB(220, 70, 70)
 
 	LabelPoints.Text    = tostring(payload.totalPoints)
