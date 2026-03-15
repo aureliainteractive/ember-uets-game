@@ -30,6 +30,7 @@ local LabelTime       = Container:WaitForChild("LabelTime")       -- TextLabel
 local LabelPrecision  = Container:WaitForChild("LabelPrecision")  -- TextLabel
 local LabelErrors     = Container:WaitForChild("LabelErrors")     -- TextLabel
 local LabelObjectives = Container:WaitForChild("LabelObjectives") -- TextLabel  e.g. "4/4"
+local RankContainer   = Container:WaitForChild("RankContainer")   -- ImageLabel or container with one
 
 -- Per-step rows — one Frame per step, each with LabelName, LabelTime, LabelPoints
 -- Adjust the parent folder name if needed.
@@ -76,6 +77,24 @@ local RANK_STATUS = {
 	["D"]  = "No aprobado",
 }
 
+local RANK_BAND = {
+	["S"]  = "GREEN",
+	["A+"] = "GREEN",
+	["A"]  = "GREEN",
+	["B+"] = "YELLOW",
+	["B"]  = "YELLOW",
+	["C+"] = "YELLOW",
+	["C"]  = "RED",
+	["D"]  = "RED",
+}
+
+-- Replace these with your real image asset ids.
+local RANK_BAND_IMAGES = {
+	GREEN  = "rbxassetid://140721936487947",
+	YELLOW = "rbxassetid://119407907574369",
+	RED    = "rbxassetid://88357135721128",
+}
+
 local TWEEN_IN  = TweenInfo.new(0.4, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
 local TWEEN_OUT = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 
@@ -100,6 +119,25 @@ local function hideScreen()
 	end)
 end
 
+local function getRankImageTarget()
+	if RankContainer:IsA("ImageLabel") then
+		return RankContainer
+	end
+
+	local explicit = RankContainer:FindFirstChild("RankImage")
+	if explicit and explicit:IsA("ImageLabel") then
+		return explicit
+	end
+
+	local firstImage = RankContainer:FindFirstChildWhichIsA("ImageLabel", true)
+	if firstImage then
+		return firstImage
+	end
+
+	warn("[ResultsScreenHandler] RankContainer no tiene un ImageLabel para cambiar imagen.")
+	return nil
+end
+
 local function populate(payload)
 	-- Header
 	local simType = payload.simType or "—"
@@ -112,6 +150,13 @@ local function populate(payload)
 	local status = RANK_STATUS[rank] or "No aprobado"
 	LabelRank.Text      = string.format("%s - Rango %s", status, rank)
 	LabelRank.TextColor3 = RANK_COLORS[rank] or Color3.fromRGB(220, 70, 70)
+
+	local rankBand = RANK_BAND[rank] or "RED"
+	local rankImageId = RANK_BAND_IMAGES[rankBand]
+	local rankImageTarget = getRankImageTarget()
+	if rankImageTarget and rankImageId and rankImageId ~= "" then
+		rankImageTarget.Image = rankImageId
+	end
 
 	LabelPoints.Text    = tostring(payload.totalPoints)
 	LabelTime.Text      = payload.totalTime or "00:00"
