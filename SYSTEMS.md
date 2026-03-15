@@ -22,6 +22,7 @@ This document describes each major system in the EMBER simulator, its purpose, t
 14. [Loading Screen System](#14-loading-screen-system)
 15. [Firefighter NPC Manager](#15-firefighter-npc-manager)
 16. [Physical Actuator Integration](#16-physical-actuator-integration)
+17. [Door System](#17-door-system)
 
 ---
 
@@ -453,6 +454,36 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 **Purpose:** Sends commands to external hardware (haptic feedback actuators in the physical VR cabin) via an HTTP API.
 
 **Script:** `src/server/SimulationController.server.lua` — `PhysicalActuatorBindable` handler
+
+---
+
+## 17. Door System
+
+**System name:** Door System
+
+**Purpose:** Centralized management of all interactive doors.
+
+**Key scripts:**
+- `src/server/DoorSystem.server.lua`
+- `src/server/modules/doors/HingeDoor.lua`
+- `src/server/modules/doors/SlidingDoor.lua`
+
+**Configuration:**
+- Stored as Attributes on each door `Model`.
+- Hinge attributes: `DoorType`, `OpenAngle`, `OpenTime`, `Cooldown`.
+- Sliding attributes: `DoorType`, `SlideDistance`, `SlideTime`, `SlideDirection`, `Cooldown`.
+
+**Client interaction:**
+- `VRDoorInteractor.client.lua` fires `ToggleDoor:FireServer()`.
+- Server receives this through each door model's `ToggleDoor` `RemoteEvent`.
+
+**Door types:**
+- **Hinge** — CFrame rotation around the `Hinge` part.
+- **Sliding** — Positional offset driven by `SlidePivot`.
+
+**How it interacts with other systems:**
+- Independent from simulation modules and scoring flow.
+- Uses the same existing `ToggleDoor` contract and does not modify client-side VR interaction logic.
 
 **Trigger:** `PhysicalActuatorBindable:Fire(player, actuatorName, value, duration, callback)`
 

@@ -63,7 +63,7 @@ Scripts on different sides cannot call each other directly. EMBER uses the follo
 
 ## 4. Server-Side Architecture
 
-All authoritative logic runs on the server. Three scripts handle distinct concerns.
+All authoritative logic runs on the server. Four scripts handle distinct concerns.
 
 ### 4.1 SimulationController (`src/server/SimulationController.server.lua`)
 
@@ -123,6 +123,20 @@ Drives the in-game day/night cycle.
 **Responsibilities:**
 - Increments `Lighting.ClockTime` every heartbeat based on `DAY_LENGTH_SECONDS` (default: 30 real seconds = 24 game hours).
 - Freezes the clock at midnight (`ClockTime = 0`) when `PowerMode == "BLACKOUT"` and resets atmosphere density.
+
+### 4.4 DoorSystem (`src/server/DoorSystem.server.lua`)
+
+Centralized server coordinator for all interactive doors.
+
+**Responsibilities:**
+- Scans `workspace` for `Model` instances with a `DoorType` attribute.
+- Initializes each door via modular handlers based on `DoorType`.
+- Supports runtime door models via `workspace.DescendantAdded` initialization.
+- Leaves client interaction contract unchanged (`ToggleDoor` RemoteEvent is still fired by `VRDoorInteractor`).
+
+**Door modules:**
+- `src/server/modules/doors/HingeDoor.lua` — Hinge doors (CFrame rotation around `Hinge`).
+- `src/server/modules/doors/SlidingDoor.lua` — Sliding doors (positional offset from `SlidePivot`).
 
 ---
 
