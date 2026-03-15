@@ -1,7 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Lighting = game:GetService("Lighting")
 
-local modules = script:WaitForChild("modules")
+local modules = script.Parent:WaitForChild("modules")
 local DialogService = require(modules:WaitForChild("DialogService"))
 local NavigationUtils = require(modules:WaitForChild("NavigationUtils"))
 local ScoringSystem = require(modules:WaitForChild("ScoringSystem"))
