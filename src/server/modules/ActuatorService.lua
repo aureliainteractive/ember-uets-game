@@ -3,9 +3,7 @@
 -- Dependencies: HttpService
 
 local HttpService = game:GetService("HttpService")
-
-local API_URL = "https://myurlhere.com/api"
-local API_KEY = "REPLACE_WITH_KEY"
+local ActuatorConfig = require(script.Parent.ActuatorConfig)
 
 local ActuatorService = {}
 
@@ -30,11 +28,11 @@ function ActuatorService.fire(player, actuatorName, value, duration, callback)
 
 	local ok, result = pcall(function()
 		return HttpService:PostAsync(
-			API_URL .. "/actuator",
+			ActuatorConfig.API_URL .. "/actuator",
 			HttpService:JSONEncode(payload),
 			Enum.HttpContentType.ApplicationJson,
 			false,
-			{ ["Content-Type"] = "application/json", ["Authorization"] = "Bearer " .. API_KEY }
+			{ ["Content-Type"] = "application/json", ["Authorization"] = "Bearer " .. ActuatorConfig.API_KEY }
 		)
 	end)
 

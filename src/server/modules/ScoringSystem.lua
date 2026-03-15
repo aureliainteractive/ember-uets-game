@@ -5,9 +5,6 @@
 local DialogService = require(script.Parent.DialogService)
 local NavigationUtils = require(script.Parent.NavigationUtils)
 
-local spawnpointsFolder = workspace:WaitForChild("Spawnpoints")
-local mainLobbySpawn = spawnpointsFolder:WaitForChild("MainLobby")
-
 local ScoringSystem = {}
 
 -- Calculates average score from step times against max times.
@@ -41,7 +38,7 @@ function ScoringSystem.getGrade(score)
 end
 
 -- Shows final results dialog sequence and returns player to lobby.
-function ScoringSystem.showFinalResults(player, simData, simType)
+function ScoringSystem.showFinalResults(player, simData, simType, mainLobbySpawn)
 	if not simData.waypointTimes or #simData.waypointTimes == 0 then
 		warn(string.format("[SimController] Sin tiempos registrados para mostrar resultados (%s).", player.Name))
 		NavigationUtils.teleportPlayer(player, mainLobbySpawn)

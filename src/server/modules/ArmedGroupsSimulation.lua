@@ -217,7 +217,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 					end
 					services.setPowerMode("NORMAL")
 					services.controllerHUDEvent:FireClient(player, "Hide")
-					ScoringSystem.showFinalResults(player, session, "Grupos Armados")
+					ScoringSystem.showFinalResults(player, session, "Grupos Armados", services.mainLobbySpawn)
 					state.playerSimulationData[player.UserId] = nil
 				end)
 			end)

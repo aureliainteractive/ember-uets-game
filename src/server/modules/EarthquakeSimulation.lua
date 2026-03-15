@@ -325,7 +325,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 				services.setSimulationActive("Earthquake", locationName, false)
 				services.setPowerMode("NORMAL")
 				services.controllerHUDEvent:FireClient(player, "Hide")
-				ScoringSystem.showFinalResults(player, session, "Sismo")
+				ScoringSystem.showFinalResults(player, session, "Sismo", services.mainLobbySpawn)
 				state.playerSimulationData[player.UserId] = nil
 			end)
 		end)
