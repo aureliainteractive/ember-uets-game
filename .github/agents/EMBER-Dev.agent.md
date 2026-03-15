@@ -53,12 +53,33 @@ For refactors, follow this stricter process:
 3. Identify load-time side effects.
 4. Propose the split as: `New file | Responsibility | Functions moved | Depends on`.
 5. Implement modules in dependency order, starting with pure utilities and ending with the controller.
+6. When a simulation mid-flow error path requires cleanup
+	 (waypoint missing, teleport failed), always call HUD Hide,
+	 setPowerMode("NORMAL"), setSimulationActive(false), and
+	 clear playerSimulationData[userId] — in that order.
+	 Never omit any of the four steps.
+
+## Execute Tool Rules
+- Only use execute after all file writes for a session are complete
+	and re-read verified.
+- Only permitted command: rojo build -o /tmp/ember-check.rbxlx
+- Do not run rojo build if any file write in the current session
+	returned an error or was skipped.
+- Do not run shell commands that delete, move, or rename files.
+- Do not run git commands.
+- Report the full build output (stdout + stderr) after every run.
+- If build fails, fix only the file named in the error. Re-run.
+	Do not re-run the entire session.
 
 ## EMBER-Specific Knowledge
 - Simulation types: `FireSimulation`, `EarthquakeSimulation`, `ArmedGroupsSimulation`, `ExploreSimulation`.
 - Difficulty mapping: `Easy = 1`, `Medium = 2`, `Hard = 3`.
 - Key RemoteEvents: `ShowDialog`, `CameraShakeEvent`, `ControllerUI_HUD`, `ToggleDoor`.
 - Key BindableEvents: `SimulationStartBindable`, `HighlightPartBindable`, `FinishedTaskBindable`, `PhysicalActuatorBindable`.
+- Simulation modules receive two context tables from the controller:
+	services (functions, refs, constants) and
+	state (mutable shared data).
+	Never add new fields to either without updating ARCHITECTURE.md.
 - Primary large-script refactor target: `src/server/SimulationController.server.lua`.
 
 ## Output Expectations
