@@ -6,6 +6,7 @@ local DialogService = require(script.Parent.DialogService)
 local NavigationUtils = require(script.Parent.NavigationUtils)
 local ActuatorService = require(script.Parent.ActuatorService)
 local ScoringSystem = require(script.Parent.ScoringSystem)
+local ResultsSystem = require(script.Parent.ResultsSystem)
 
 local RNG = Random.new()
 
@@ -408,7 +409,8 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 									task.wait(2)
 									cleanup()
 									services.controllerHUDEvent:FireClient(player, "Hide")
-									ScoringSystem.showFinalResults(player, session, "Incendio", services.mainLobbySpawn)
+									ResultsSystem.show(player, session, "FireSimulation",
+										locationName, difficulty, services.mainLobbySpawn)
 								end)
 							end)
 						end)

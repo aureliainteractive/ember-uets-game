@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DialogService = require(script.Parent.DialogService)
 local NavigationUtils = require(script.Parent.NavigationUtils)
 local ScoringSystem = require(script.Parent.ScoringSystem)
+local ResultsSystem = require(script.Parent.ResultsSystem)
 
 local RNG = Random.new()
 
@@ -329,7 +330,8 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 				services.setSimulationActive("Earthquake", locationName, false)
 				services.setPowerMode("NORMAL")
 				services.controllerHUDEvent:FireClient(player, "Hide")
-				ScoringSystem.showFinalResults(player, session, "Sismo", services.mainLobbySpawn)
+				ResultsSystem.show(player, session, "EarthquakeSimulation",
+					locationName, difficulty, services.mainLobbySpawn)
 				services.HUDService.stopTicker(player)
 				state.playerSimulationData[player.UserId] = nil
 			end)
