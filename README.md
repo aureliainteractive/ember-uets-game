@@ -4,6 +4,16 @@
 
 ---
 
+## Research-Only Notice
+
+This repository is provided for **research and documentation purposes only**.
+
+- It is **not expected to be fully recreatable** as a standalone project from source alone.
+- Core place-file assets, scene data, and project-specific Roblox instances are not tracked here.
+- The code is preserved to support academic review, system analysis, and reference implementation study.
+
+---
+
 ## Overview
 
 EMBER is an immersive emergency preparedness simulator built on the Roblox platform. It was developed as a thesis project with the goal of improving emergency response knowledge and behavior in educational settings through guided, interactive simulations.
@@ -86,7 +96,9 @@ The `default.project.json` file tells Rojo where each folder maps inside the Rob
 
 ---
 
-## Development Setup
+## Development Setup (Reference Only)
+
+The following setup reflects the original development workflow, but complete reproduction is not guaranteed from this repository alone.
 
 ### Prerequisites
 
