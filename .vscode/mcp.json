@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "robloxstudio-mcp": {
+      "command": "npx",
+      "args": ["-y", "robloxstudio-mcp@latest"]
+    }
+  }
+}
