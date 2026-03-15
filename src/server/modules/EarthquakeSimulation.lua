@@ -279,6 +279,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, simData)
 			warn("[SimController] Sismo: Waypoint2 no encontrado.")
 			simData.setSimulationActive("Earthquake", locationName, false)
 			simData.setPowerMode("NORMAL")
+			simData.controllerHUDEvent:FireClient(player, "Hide")
 			simData.playerSimulationData[player.UserId] = nil
 			return
 		end
@@ -302,6 +303,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, simData)
 				warn("[SimController] Sismo: Waypoint3 no encontrado.")
 				simData.setSimulationActive("Earthquake", locationName, false)
 				simData.setPowerMode("NORMAL")
+				simData.controllerHUDEvent:FireClient(player, "Hide")
 				simData.playerSimulationData[player.UserId] = nil
 				return
 			end
@@ -322,12 +324,12 @@ function EarthquakeSimulation.start(player, locationName, difficulty, simData)
 				EarthquakeSimulation.restoreEarthquakeDrops(originalStates)
 				simData.setSimulationActive("Earthquake", locationName, false)
 				simData.setPowerMode("NORMAL")
+				simData.controllerHUDEvent:FireClient(player, "Hide")
 				ScoringSystem.showFinalResults(player, session, "Sismo")
 				simData.playerSimulationData[player.UserId] = nil
 			end)
 		end)
 	end)
-	simData.controllerHUDEvent:FireClient(player, "Hide")
 end
 
 return EarthquakeSimulation

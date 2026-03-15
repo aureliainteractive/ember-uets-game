@@ -175,6 +175,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, simData)
 				warn("[SimController] Grupos armados: Waypoint3 no encontrado.")
 				simData.setPowerMode("NORMAL")
 				simData.setSimulationActive("ArmedGroups", locationName, false)
+				simData.controllerHUDEvent:FireClient(player, "Hide")
 				simData.playerSimulationData[player.UserId] = nil
 				return
 			end
@@ -195,6 +196,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, simData)
 					warn("[SimController] Grupos armados: Waypoint4 no encontrado.")
 					simData.setPowerMode("NORMAL")
 					simData.setSimulationActive("ArmedGroups", locationName, false)
+					simData.controllerHUDEvent:FireClient(player, "Hide")
 					simData.playerSimulationData[player.UserId] = nil
 					return
 				end
@@ -214,13 +216,13 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, simData)
 						if npc and npc.Parent then npc:Destroy() end
 					end
 					simData.setPowerMode("NORMAL")
+					simData.controllerHUDEvent:FireClient(player, "Hide")
 					ScoringSystem.showFinalResults(player, session, "Grupos Armados")
 					simData.playerSimulationData[player.UserId] = nil
 				end)
 			end)
 		end)
 	end)
-	simData.controllerHUDEvent:FireClient(player, "Hide")
 end
 
 return ArmedGroupsSimulation

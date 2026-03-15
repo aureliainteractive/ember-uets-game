@@ -399,6 +399,7 @@ function FireSimulation.start(player, locationName, difficulty, simData)
 									DialogService.send(player, "Success", "Punto de encuentro alcanzado. Simulacro completado.")
 									task.wait(2)
 									cleanup()
+									simData.controllerHUDEvent:FireClient(player, "Hide")
 									ScoringSystem.showFinalResults(player, session, "Incendio")
 								end)
 							end)
@@ -423,7 +424,6 @@ function FireSimulation.start(player, locationName, difficulty, simData)
 			NavigationUtils.teleportPlayer(player, simData.mainLobbySpawn)
 		end
 	end)
-	simData.controllerHUDEvent:FireClient(player, "Hide")
 end
 
 return FireSimulation
