@@ -61,7 +61,7 @@ local function resetHUDContent()
 	Labels.score.Text    = "100"
 
 	for _, obj in ipairs(Objectives) do
-		obj.Image   = IMG_INCOMPLETE
+		obj.Icon.Image   = IMG_INCOMPLETE
 		obj.Visible = true
 		if obj:FindFirstChild("Icon") then
 			obj.Icon.Image = IMG_INCOMPLETE

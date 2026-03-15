@@ -212,7 +212,6 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 		return
 	end
 
-	services.controllerHUDEvent:FireClient(player, "Show")
 	services.setSimulationActive("Earthquake", locationName, true)
 	services.setPowerMode("BLACKOUT")
 	NavigationUtils.teleportToSpawn(player, "EarthquakeSimulation", locationName)
@@ -257,6 +256,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 		if ev then ev:FireClient(player, p.duration, p.shakeScale) end
 	end)
 
+	services.controllerHUDEvent:FireClient(player, "Show")
 	NavigationUtils.highlightRefuges(refuges, true)
 	DialogService.send(player, "Warning", "PASO 1: AGACHESE, CUBRASE Y AGÁRRESE.")
 	task.wait(1)

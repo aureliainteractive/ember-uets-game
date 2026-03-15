@@ -258,7 +258,6 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 
 	services.setSimulationActive("Fire", locationName, true)
 	services.setPowerMode("BLACKOUT")
-	services.controllerHUDEvent:FireClient(player, "Show")
 
 	local buildingParts = FireSimulation.collectBuildingParts(building)
 	local seedPart = FireSimulation.pickFireOrigin(buildingParts)
@@ -331,6 +330,7 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 	task.wait(2)
 	DialogService.send(player, "Warning", "El origen del fuego ha sido identificado y senalado. Localicelo.")
 
+	services.controllerHUDEvent:FireClient(player, "Show")
 	DialogService.send(player, "Info", "PASO 1: Acerquese al origen del fuego senalado para identificarlo.")
 
 	local originDetected = false

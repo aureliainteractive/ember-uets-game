@@ -58,7 +58,6 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 		return
 	end
 
-	services.controllerHUDEvent:FireClient(player, "Show")
 	NavigationUtils.teleportToSpawn(player, "ArmedGroupsSimulation", locationName)
 	services.setPowerMode("BLACKOUT")
 
@@ -141,6 +140,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 	DialogService.send(player, "Warning", "Amenaza confirmada en las instalaciones. Siga el protocolo.")
 	task.wait(2)
 
+	services.controllerHUDEvent:FireClient(player, "Show")
 	local wp1 = NavigationUtils.getWaypoint(locationName, "ArmedGroupsSimulation", 1)
 	if not wp1 then
 		warn("[SimController] Grupos armados: Waypoint1 no encontrado.")
