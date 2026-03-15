@@ -220,6 +220,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 	local refuges = NavigationUtils.getRefuges(locationName, "EarthquakeSimulation")
 
 	state.playerSimulationData[player.UserId] = {
+		startTime = tick(),
 		waypointTimes = {},
 		lastWaypointTime = tick(),
 		maxTimes = { 12, 18, 15 },
@@ -229,6 +230,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 
 	local session = state.playerSimulationData[player.UserId]
 	print(string.format("[SimController] Sismo iniciado: %s — %s — Dificultad %d", player.Name, locationName, difficulty))
+	services.HUDService.startTicker(player, session, services)
 
 	local function recordStep()
 		local now = tick()
@@ -280,6 +282,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 			services.setSimulationActive("Earthquake", locationName, false)
 			services.setPowerMode("NORMAL")
 			services.controllerHUDEvent:FireClient(player, "Hide")
+			services.HUDService.stopTicker(player)
 			state.playerSimulationData[player.UserId] = nil
 			return
 		end
@@ -304,6 +307,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 				services.setSimulationActive("Earthquake", locationName, false)
 				services.setPowerMode("NORMAL")
 				services.controllerHUDEvent:FireClient(player, "Hide")
+				services.HUDService.stopTicker(player)
 				state.playerSimulationData[player.UserId] = nil
 				return
 			end
@@ -326,6 +330,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 				services.setPowerMode("NORMAL")
 				services.controllerHUDEvent:FireClient(player, "Hide")
 				ScoringSystem.showFinalResults(player, session, "Sismo", services.mainLobbySpawn)
+				services.HUDService.stopTicker(player)
 				state.playerSimulationData[player.UserId] = nil
 			end)
 		end)

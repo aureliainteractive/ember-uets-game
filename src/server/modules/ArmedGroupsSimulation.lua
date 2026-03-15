@@ -27,6 +27,7 @@ local function endArmedGroupsByDeath(player, locationName, spawnedNPCs, services
 		if npc and npc.Parent then npc:Destroy() end
 	end
 
+	services.HUDService.stopTicker(player)
 	state.playerSimulationData[player.UserId] = nil
 	services.setPowerMode("NORMAL")
 	services.setSimulationActive("ArmedGroups", locationName, false)
@@ -64,6 +65,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 	local refuges = NavigationUtils.getRefuges(locationName, "ArmedGroupsSimulation")
 
 	state.playerSimulationData[player.UserId] = {
+		startTime = tick(),
 		waypointTimes = {},
 		lastWaypointTime = tick(),
 		maxTimes = { 10, 20, 15, 18 },
@@ -73,6 +75,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 
 	local session = state.playerSimulationData[player.UserId]
 	print(string.format("[SimController] Grupos armados iniciado: %s — %s — Dificultad %d", player.Name, locationName, difficulty))
+	services.HUDService.startTicker(player, session, services)
 
 	local function recordStep()
 		local now = tick()
@@ -91,6 +94,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 		DialogService.send(player, "Error", "No hay puntos de aparicion configurados para esta ubicacion.")
 		services.setPowerMode("NORMAL")
 		services.setSimulationActive("ArmedGroups", locationName, false)
+		services.HUDService.stopTicker(player)
 		return
 	end
 
@@ -142,6 +146,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 		warn("[SimController] Grupos armados: Waypoint1 no encontrado.")
 		services.setPowerMode("NORMAL")
 		services.setSimulationActive("ArmedGroups", locationName, false)
+		services.HUDService.stopTicker(player)
 		state.playerSimulationData[player.UserId] = nil
 		return
 	end
@@ -176,6 +181,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 				services.setPowerMode("NORMAL")
 				services.setSimulationActive("ArmedGroups", locationName, false)
 				services.controllerHUDEvent:FireClient(player, "Hide")
+				services.HUDService.stopTicker(player)
 				state.playerSimulationData[player.UserId] = nil
 				return
 			end
@@ -197,6 +203,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 					services.setPowerMode("NORMAL")
 					services.setSimulationActive("ArmedGroups", locationName, false)
 					services.controllerHUDEvent:FireClient(player, "Hide")
+					services.HUDService.stopTicker(player)
 					state.playerSimulationData[player.UserId] = nil
 					return
 				end
@@ -218,6 +225,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 					services.setPowerMode("NORMAL")
 					services.controllerHUDEvent:FireClient(player, "Hide")
 					ScoringSystem.showFinalResults(player, session, "Grupos Armados", services.mainLobbySpawn)
+					services.HUDService.stopTicker(player)
 					state.playerSimulationData[player.UserId] = nil
 				end)
 			end)

@@ -9,6 +9,8 @@ local HUDContainer = playerGui:WaitForChild("HUD_VR")
 local overlay = HUDContainer:WaitForChild("Overlay")
 
 local ControllerUI_HUD = ReplicatedStorage:WaitForChild("ControllerUI_HUD")
+local RunService = game:GetService("RunService")
+local HUDUpdate  = ReplicatedStorage:WaitForChild("HUDUpdate")
 
 local CONFIG = {
 	AnimationDuration = 0.4,
@@ -39,6 +41,12 @@ local Objectives = {
 	progressFrame:WaitForChild("Obj4")
 }
 
+local IMG_INCOMPLETE  = "rbxassetid://139565534034394"
+local IMG_IN_PROGRESS = "rbxassetid://75916766300891"
+local IMG_COMPLETE    = "rbxassetid://94228531190693"
+
+local isHUDVisible = false
+
 -- Animaciones
 local TWEEN_IN = TweenInfo.new(CONFIG.AnimationDuration, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local TWEEN_OUT = TweenInfo.new(CONFIG.AnimationDuration, Enum.EasingStyle.Back, Enum.EasingDirection.In)
@@ -66,6 +74,7 @@ end
 
 -- Mostrar HUD
 local function showHUD()
+	isHUDVisible = true
 
 	for ui, pos in pairs(SHOW_POSITIONS) do
 		ui.Position = HIDE_POSITIONS[ui]
@@ -82,6 +91,13 @@ end
 
 -- Ocultar HUD
 local function hideHUD()
+	isHUDVisible = false
+	Labels.timeLeft.Text = "05:00"
+	Labels.score.Text    = "100"
+	for _, obj in ipairs(Objectives) do
+		obj.Image   = IMG_INCOMPLETE
+		obj.Visible = true
+	end
 
 	for ui, pos in pairs(HIDE_POSITIONS) do
 		tweenUI(ui, TWEEN_OUT, {Position = pos})
@@ -108,6 +124,34 @@ ControllerUI_HUD.OnClientEvent:Connect(function(action)
 		warn("[HUDHandler] Acción desconocida:", action)
 	end
 
+end)
+
+HUDUpdate.OnClientEvent:Connect(function(
+	timeLeft, score, completedSteps, stepNames
+)
+	if not isHUDVisible then return end
+
+	local mins = math.floor(timeLeft / 60)
+	local secs = timeLeft % 60
+	Labels.timeLeft.Text = string.format("%02d:%02d", mins, secs)
+
+	Labels.score.Text = tostring(score)
+
+	for i, obj in ipairs(Objectives) do
+		local name = stepNames and stepNames[i]
+		if name then
+			obj.Visible = true
+			if i <= completedSteps then
+				obj.Image = IMG_COMPLETE
+			elseif i == completedSteps + 1 then
+				obj.Image = IMG_IN_PROGRESS
+			else
+				obj.Image = IMG_INCOMPLETE
+			end
+		else
+			obj.Visible = false
+		end
+	end
 end)
 
 hideHUD()

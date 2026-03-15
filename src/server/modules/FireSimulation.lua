@@ -295,6 +295,7 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 		if session then session.simulationEnded = true end
 	end)
 	print(string.format("[SimController] Incendio iniciado: %s — %s — Dificultad %d", player.Name, locationName, difficulty))
+	services.HUDService.startTicker(player, session, services)
 
 	local function recordStep()
 		local now = tick()
@@ -311,6 +312,7 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 		FireSimulation.hideFirefighters()
 		services.setSimulationActive("Fire", locationName, false)
 		services.setPowerMode("NORMAL")
+		services.HUDService.stopTicker(player)
 		state.playerSimulationData[player.UserId] = nil
 	end
 

@@ -6,6 +6,7 @@ local DialogService = require(modules:WaitForChild("DialogService"))
 local NavigationUtils = require(modules:WaitForChild("NavigationUtils"))
 local ScoringSystem = require(modules:WaitForChild("ScoringSystem"))
 local ActuatorService = require(modules:WaitForChild("ActuatorService"))
+local HUDService = require(modules:WaitForChild("HUDService"))
 local FireSimulation = require(modules:WaitForChild("FireSimulation"))
 local EarthquakeSimulation = require(modules:WaitForChild("EarthquakeSimulation"))
 local ArmedGroupsSimulation = require(modules:WaitForChild("ArmedGroupsSimulation"))
@@ -15,6 +16,7 @@ local highlightPartBindable = ReplicatedStorage:WaitForChild("HighlightPartBinda
 local finishedTaskBindable = ReplicatedStorage:WaitForChild("FinishedTaskBindable")
 local physicalActuatorBindable = ReplicatedStorage:WaitForChild("PhysicalActuatorBindable")
 local controllerHUDEvent = ReplicatedStorage:WaitForChild("ControllerUI_HUD")
+local hudUpdateEvent = ReplicatedStorage:WaitForChild("HUDUpdate")
 
 local spawnpointsFolder = workspace:WaitForChild("Spawnpoints")
 local mainLobbySpawn = spawnpointsFolder:WaitForChild("MainLobby")
@@ -104,7 +106,9 @@ simulationStartBindable.Event:Connect(function(player, eventType, locationName, 
 		canStartSimulation = canStartSimulation,
 		setSimulationActive = setSimulationActive,
 		playIntercomSound = playIntercomSound,
+		HUDService = HUDService,
 		controllerHUDEvent = controllerHUDEvent,
+		hudUpdateEvent = hudUpdateEvent,
 		mainLobbySpawn = mainLobbySpawn,
 		FIRE_ALARM_SOUND_ID = FIRE_ALARM_SOUND_ID,
 		EARTHQUAKE_ALARM_SOUND_ID = EARTHQUAKE_ALARM_SOUND_ID,
