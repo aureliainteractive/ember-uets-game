@@ -15,9 +15,9 @@ local RNG = Random.new()
 
 local ArmedGroupsSimulation = {}
 
-local function endArmedGroupsByDeath(player, locationName, spawnedNPCs, simData)
+local function endArmedGroupsByDeath(player, locationName, spawnedNPCs, services, state)
 	if not player or not player.Parent then return end
-	local session = simData.playerSimulationData[player.UserId]
+	local session = state.playerSimulationData[player.UserId]
 	if not session then return end
 
 	DialogService.send(player, "Error", "SIMULACRO FINALIZADO — El participante fue neutralizado.")
@@ -27,25 +27,25 @@ local function endArmedGroupsByDeath(player, locationName, spawnedNPCs, simData)
 		if npc and npc.Parent then npc:Destroy() end
 	end
 
-	simData.playerSimulationData[player.UserId] = nil
-	simData.setPowerMode("NORMAL")
-	simData.setSimulationActive("ArmedGroups", locationName, false)
+	state.playerSimulationData[player.UserId] = nil
+	services.setPowerMode("NORMAL")
+	services.setSimulationActive("ArmedGroups", locationName, false)
 
 	task.wait(1)
-	NavigationUtils.teleportPlayer(player, simData.mainLobbySpawn)
+	NavigationUtils.teleportPlayer(player, services.mainLobbySpawn)
 	DialogService.send(player, "Info", "Ha regresado al lobby principal.")
 end
 
 -- Starts an armed-groups simulation for a player at a location and difficulty.
-function ArmedGroupsSimulation.start(player, locationName, difficulty, simData)
+function ArmedGroupsSimulation.start(player, locationName, difficulty, services, state)
 	local npcCounts = { [1] = 2, [2] = 4, [3] = 6 }
 	local prepTimes = { [1] = 7, [2] = 5, [3] = 4 }
 
-	if not simData.canStartSimulation("ArmedGroups", locationName) then
+	if not services.canStartSimulation("ArmedGroups", locationName) then
 		DialogService.send(player, "Error", "Ya hay un simulacro activo en esta ubicacion.")
 		return
 	end
-	simData.setSimulationActive("ArmedGroups", locationName, true)
+	services.setSimulationActive("ArmedGroups", locationName, true)
 
 	local npcCount = npcCounts[math.clamp(difficulty, 1, 3)]
 	local prepTime = prepTimes[math.clamp(difficulty, 1, 3)]
@@ -53,17 +53,17 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, simData)
 	local spawnFolder = AtacantsSpawns:FindFirstChild(locationName)
 	if not spawnFolder then
 		DialogService.send(player, "Error", "No se pudo cargar la ubicacion del ejercicio.")
-		simData.setSimulationActive("ArmedGroups", locationName, false)
+		services.setSimulationActive("ArmedGroups", locationName, false)
 		return
 	end
 
-	simData.controllerHUDEvent:FireClient(player, "Show")
+	services.controllerHUDEvent:FireClient(player, "Show")
 	NavigationUtils.teleportToSpawn(player, "ArmedGroupsSimulation", locationName)
-	simData.setPowerMode("BLACKOUT")
+	services.setPowerMode("BLACKOUT")
 
 	local refuges = NavigationUtils.getRefuges(locationName, "ArmedGroupsSimulation")
 
-	simData.playerSimulationData[player.UserId] = {
+	state.playerSimulationData[player.UserId] = {
 		waypointTimes = {},
 		lastWaypointTime = tick(),
 		maxTimes = { 10, 20, 15, 18 },
@@ -71,7 +71,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, simData)
 		connections = {},
 	}
 
-	local session = simData.playerSimulationData[player.UserId]
+	local session = state.playerSimulationData[player.UserId]
 	print(string.format("[SimController] Grupos armados iniciado: %s — %s — Dificultad %d", player.Name, locationName, difficulty))
 
 	local function recordStep()
@@ -89,8 +89,8 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, simData)
 
 	if #spawns == 0 then
 		DialogService.send(player, "Error", "No hay puntos de aparicion configurados para esta ubicacion.")
-		simData.setPowerMode("NORMAL")
-		simData.setSimulationActive("ArmedGroups", locationName, false)
+		services.setPowerMode("NORMAL")
+		services.setSimulationActive("ArmedGroups", locationName, false)
 		return
 	end
 
@@ -105,8 +105,8 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, simData)
 	local character = player.Character or player.CharacterAdded:Wait()
 	local humanoid = character:WaitForChild("Humanoid")
 	humanoid.Died:Once(function()
-		if simData.playerSimulationData[player.UserId] then
-			endArmedGroupsByDeath(player, locationName, spawnedNPCs, simData)
+		if state.playerSimulationData[player.UserId] then
+			endArmedGroupsByDeath(player, locationName, spawnedNPCs, services, state)
 		end
 	end)
 
@@ -140,9 +140,9 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, simData)
 	local wp1 = NavigationUtils.getWaypoint(locationName, "ArmedGroupsSimulation", 1)
 	if not wp1 then
 		warn("[SimController] Grupos armados: Waypoint1 no encontrado.")
-		simData.setPowerMode("NORMAL")
-		simData.setSimulationActive("ArmedGroups", locationName, false)
-		simData.playerSimulationData[player.UserId] = nil
+		services.setPowerMode("NORMAL")
+		services.setSimulationActive("ArmedGroups", locationName, false)
+		state.playerSimulationData[player.UserId] = nil
 		return
 	end
 
@@ -173,10 +173,10 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, simData)
 			local wp3 = NavigationUtils.getWaypoint(locationName, "ArmedGroupsSimulation", 3)
 			if not wp3 then
 				warn("[SimController] Grupos armados: Waypoint3 no encontrado.")
-				simData.setPowerMode("NORMAL")
-				simData.setSimulationActive("ArmedGroups", locationName, false)
-				simData.controllerHUDEvent:FireClient(player, "Hide")
-				simData.playerSimulationData[player.UserId] = nil
+				services.setPowerMode("NORMAL")
+				services.setSimulationActive("ArmedGroups", locationName, false)
+				services.controllerHUDEvent:FireClient(player, "Hide")
+				state.playerSimulationData[player.UserId] = nil
 				return
 			end
 
@@ -194,10 +194,10 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, simData)
 				local wp4 = NavigationUtils.getWaypoint(locationName, "ArmedGroupsSimulation", 4)
 				if not wp4 then
 					warn("[SimController] Grupos armados: Waypoint4 no encontrado.")
-					simData.setPowerMode("NORMAL")
-					simData.setSimulationActive("ArmedGroups", locationName, false)
-					simData.controllerHUDEvent:FireClient(player, "Hide")
-					simData.playerSimulationData[player.UserId] = nil
+					services.setPowerMode("NORMAL")
+					services.setSimulationActive("ArmedGroups", locationName, false)
+					services.controllerHUDEvent:FireClient(player, "Hide")
+					state.playerSimulationData[player.UserId] = nil
 					return
 				end
 
@@ -215,10 +215,10 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, simData)
 					for _, npc in pairs(spawnedNPCs) do
 						if npc and npc.Parent then npc:Destroy() end
 					end
-					simData.setPowerMode("NORMAL")
-					simData.controllerHUDEvent:FireClient(player, "Hide")
+					services.setPowerMode("NORMAL")
+					services.controllerHUDEvent:FireClient(player, "Hide")
 					ScoringSystem.showFinalResults(player, session, "Grupos Armados")
-					simData.playerSimulationData[player.UserId] = nil
+					state.playerSimulationData[player.UserId] = nil
 				end)
 			end)
 		end)

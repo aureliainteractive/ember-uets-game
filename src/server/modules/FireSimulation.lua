@@ -238,7 +238,7 @@ function FireSimulation.showFirefighters()
 end
 
 -- Starts a fire simulation for a player at a location and difficulty.
-function FireSimulation.start(player, locationName, difficulty, simData)
+function FireSimulation.start(player, locationName, difficulty, services, state)
 	local params = {
 		[1] = { duration = 55, heaterDelay = 35 },
 		[2] = { duration = 70, heaterDelay = 25 },
@@ -251,35 +251,35 @@ function FireSimulation.start(player, locationName, difficulty, simData)
 		DialogService.send(player, "Error", "No se pudo cargar la ubicacion del ejercicio.")
 		return
 	end
-	if not simData.canStartSimulation("Fire", locationName) then
+	if not services.canStartSimulation("Fire", locationName) then
 		DialogService.send(player, "Error", "Ya hay un simulacro de incendio activo en esta ubicacion.")
 		return
 	end
 
-	simData.setSimulationActive("Fire", locationName, true)
-	simData.setPowerMode("BLACKOUT")
-	simData.controllerHUDEvent:FireClient(player, "Show")
+	services.setSimulationActive("Fire", locationName, true)
+	services.setPowerMode("BLACKOUT")
+	services.controllerHUDEvent:FireClient(player, "Show")
 
 	local buildingParts = FireSimulation.collectBuildingParts(building)
 	local seedPart = FireSimulation.pickFireOrigin(buildingParts)
 
 	if not seedPart then
 		warn(string.format("[SimController] Incendio: no se pudo determinar origen en '%s'.", locationName))
-		simData.setSimulationActive("Fire", locationName, false)
-		simData.setPowerMode("NORMAL")
+		services.setSimulationActive("Fire", locationName, false)
+		services.setPowerMode("NORMAL")
 		DialogService.send(player, "Error", "No se pudo iniciar el simulacro. Intente nuevamente.")
 		return
 	end
 
 	local teleported = NavigationUtils.teleportToClosestSpawn(player, "FireSimulation", locationName, seedPart)
 	if not teleported then
-		simData.setSimulationActive("Fire", locationName, false)
-		simData.setPowerMode("NORMAL")
+		services.setSimulationActive("Fire", locationName, false)
+		services.setPowerMode("NORMAL")
 		DialogService.send(player, "Error", "No se pudo ubicar al participante. Intente nuevamente.")
 		return
 	end
 
-	simData.playerSimulationData[player.UserId] = {
+	state.playerSimulationData[player.UserId] = {
 		startTime = tick(),
 		waypointTimes = {},
 		lastWaypointTime = tick(),
@@ -290,7 +290,7 @@ function FireSimulation.start(player, locationName, difficulty, simData)
 		simulationEnded = false,
 	}
 
-	local session = simData.playerSimulationData[player.UserId]
+	local session = state.playerSimulationData[player.UserId]
 	player.CharacterRemoving:Connect(function()
 		if session then session.simulationEnded = true end
 	end)
@@ -309,9 +309,9 @@ function FireSimulation.start(player, locationName, difficulty, simData)
 		session.simulationEnded = true
 		for _, part in ipairs(affectedParts) do FireSimulation.extinguish(part) end
 		FireSimulation.hideFirefighters()
-		simData.setSimulationActive("Fire", locationName, false)
-		simData.setPowerMode("NORMAL")
-		simData.playerSimulationData[player.UserId] = nil
+		services.setSimulationActive("Fire", locationName, false)
+		services.setPowerMode("NORMAL")
+		state.playerSimulationData[player.UserId] = nil
 	end
 
 	task.spawn(function()
@@ -365,7 +365,7 @@ function FireSimulation.start(player, locationName, difficulty, simData)
 						NavigationUtils.setupWaypointDetection(player, wp2, 2, function()
 							recordStep()
 							NavigationUtils.highlightPart(wp2, false)
-							simData.playIntercomSound(simData.FIRE_ALARM_SOUND_ID)
+							services.playIntercomSound(services.FIRE_ALARM_SOUND_ID)
 							DialogService.send(player, "Success", "Alarma de incendio activada. Personal notificado.")
 							task.wait(1)
 
@@ -405,7 +405,7 @@ function FireSimulation.start(player, locationName, difficulty, simData)
 									DialogService.send(player, "Success", "Punto de encuentro alcanzado. Simulacro completado.")
 									task.wait(2)
 									cleanup()
-									simData.controllerHUDEvent:FireClient(player, "Hide")
+									services.controllerHUDEvent:FireClient(player, "Hide")
 									ScoringSystem.showFinalResults(player, session, "Incendio")
 								end)
 							end)
@@ -417,17 +417,17 @@ function FireSimulation.start(player, locationName, difficulty, simData)
 	end)
 
 	task.delay(p.heaterDelay, function()
-		if simData.playerSimulationData[player.UserId] then
+		if state.playerSimulationData[player.UserId] then
 			ActuatorService.fire(player, locationName .. "_Heater", true, p.duration)
 		end
 	end)
 
-	task.delay(simData.SIMULATION_GLOBAL_TIMEOUT, function()
-		if simData.playerSimulationData[player.UserId] then
-			warn(string.format("[SimController] Incendio: timeout de %ds alcanzado para %s.", simData.SIMULATION_GLOBAL_TIMEOUT, player.Name))
+	task.delay(services.SIMULATION_GLOBAL_TIMEOUT, function()
+		if state.playerSimulationData[player.UserId] then
+			warn(string.format("[SimController] Incendio: timeout de %ds alcanzado para %s.", services.SIMULATION_GLOBAL_TIMEOUT, player.Name))
 			cleanup()
 			DialogService.send(player, "Warning", "El simulacro ha finalizado por tiempo limite.")
-			NavigationUtils.teleportPlayer(player, simData.mainLobbySpawn)
+			NavigationUtils.teleportPlayer(player, services.mainLobbySpawn)
 		end
 	end)
 end

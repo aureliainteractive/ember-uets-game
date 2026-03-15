@@ -99,10 +99,23 @@ simulationStartBindable.Event:Connect(function(player, eventType, locationName, 
 	if not difficulty then DialogService.send(player, "Error", "Nivel de dificultad desconocido: " .. tostring(difficultyStr)); return end
 	print(string.format("[SimController] Solicitud: %s | %s | %s | %s", eventType, locationName, difficultyStr, player.Name))
 	if eventType ~= "ExploreSimulation" then stopIntercom() end
-	local ctx = { canStartSimulation = canStartSimulation, setSimulationActive = setSimulationActive, setPowerMode = setPowerMode, playIntercomSound = playIntercomSound, controllerHUDEvent = controllerHUDEvent, playerSimulationData = playerSimulationData, SIMULATION_GLOBAL_TIMEOUT = SIMULATION_GLOBAL_TIMEOUT, mainLobbySpawn = mainLobbySpawn, FIRE_ALARM_SOUND_ID = FIRE_ALARM_SOUND_ID, EARTHQUAKE_ALARM_SOUND_ID = EARTHQUAKE_ALARM_SOUND_ID }
-	if eventType == "FireSimulation" then FireSimulation.start(player, locationName, difficulty, ctx)
-	elseif eventType == "EarthquakeSimulation" then EarthquakeSimulation.start(player, locationName, difficulty, ctx)
-	elseif eventType == "ArmedGroupsSimulation" then ArmedGroupsSimulation.start(player, locationName, difficulty, ctx)
+	local services = {
+		setPowerMode = setPowerMode,
+		canStartSimulation = canStartSimulation,
+		setSimulationActive = setSimulationActive,
+		playIntercomSound = playIntercomSound,
+		controllerHUDEvent = controllerHUDEvent,
+		mainLobbySpawn = mainLobbySpawn,
+		FIRE_ALARM_SOUND_ID = FIRE_ALARM_SOUND_ID,
+		EARTHQUAKE_ALARM_SOUND_ID = EARTHQUAKE_ALARM_SOUND_ID,
+		SIMULATION_GLOBAL_TIMEOUT = SIMULATION_GLOBAL_TIMEOUT,
+	}
+	local state = {
+		playerSimulationData = playerSimulationData,
+	}
+	if eventType == "FireSimulation" then FireSimulation.start(player, locationName, difficulty, services, state)
+	elseif eventType == "EarthquakeSimulation" then EarthquakeSimulation.start(player, locationName, difficulty, services, state)
+	elseif eventType == "ArmedGroupsSimulation" then ArmedGroupsSimulation.start(player, locationName, difficulty, services, state)
 	elseif eventType == "ExploreSimulation" then startExploreSimulation(player, locationName, difficulty)
 	else DialogService.send(player, "Error", "Tipo de simulacro no reconocido: " .. tostring(eventType)) end
 end)

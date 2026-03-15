@@ -194,7 +194,7 @@ function EarthquakeSimulation.triggerAftershocks(player, count, interval)
 end
 
 -- Starts an earthquake simulation for a player at a location and difficulty.
-function EarthquakeSimulation.start(player, locationName, difficulty, simData)
+function EarthquakeSimulation.start(player, locationName, difficulty, services, state)
 	local params = {
 		[1] = { duration = 10, shakeScale = 3.0, prepTime = 6 },
 		[2] = { duration = 15, shakeScale = 5.0, prepTime = 5 },
@@ -207,19 +207,19 @@ function EarthquakeSimulation.start(player, locationName, difficulty, simData)
 		DialogService.send(player, "Error", "No se pudo cargar la ubicacion del ejercicio.")
 		return
 	end
-	if not simData.canStartSimulation("Earthquake", locationName) then
+	if not services.canStartSimulation("Earthquake", locationName) then
 		DialogService.send(player, "Error", "Ya hay un simulacro de sismo activo en esta ubicacion.")
 		return
 	end
 
-	simData.controllerHUDEvent:FireClient(player, "Show")
-	simData.setSimulationActive("Earthquake", locationName, true)
-	simData.setPowerMode("BLACKOUT")
+	services.controllerHUDEvent:FireClient(player, "Show")
+	services.setSimulationActive("Earthquake", locationName, true)
+	services.setPowerMode("BLACKOUT")
 	NavigationUtils.teleportToSpawn(player, "EarthquakeSimulation", locationName)
 
 	local refuges = NavigationUtils.getRefuges(locationName, "EarthquakeSimulation")
 
-	simData.playerSimulationData[player.UserId] = {
+	state.playerSimulationData[player.UserId] = {
 		waypointTimes = {},
 		lastWaypointTime = tick(),
 		maxTimes = { 12, 18, 15 },
@@ -227,7 +227,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, simData)
 		connections = {},
 	}
 
-	local session = simData.playerSimulationData[player.UserId]
+	local session = state.playerSimulationData[player.UserId]
 	print(string.format("[SimController] Sismo iniciado: %s — %s — Dificultad %d", player.Name, locationName, difficulty))
 
 	local function recordStep()
@@ -246,7 +246,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, simData)
 		originalStates = EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
 	end)
 
-	simData.playIntercomSound(simData.EARTHQUAKE_ALARM_SOUND_ID)
+	services.playIntercomSound(services.EARTHQUAKE_ALARM_SOUND_ID)
 	DialogService.send(player, "Warning", "MOVIMIENTO SISMICO EN CURSO.")
 	task.wait(1)
 
@@ -277,10 +277,10 @@ function EarthquakeSimulation.start(player, locationName, difficulty, simData)
 		local wp2 = NavigationUtils.getWaypoint(locationName, "EarthquakeSimulation", 2)
 		if not wp2 then
 			warn("[SimController] Sismo: Waypoint2 no encontrado.")
-			simData.setSimulationActive("Earthquake", locationName, false)
-			simData.setPowerMode("NORMAL")
-			simData.controllerHUDEvent:FireClient(player, "Hide")
-			simData.playerSimulationData[player.UserId] = nil
+			services.setSimulationActive("Earthquake", locationName, false)
+			services.setPowerMode("NORMAL")
+			services.controllerHUDEvent:FireClient(player, "Hide")
+			state.playerSimulationData[player.UserId] = nil
 			return
 		end
 
@@ -301,10 +301,10 @@ function EarthquakeSimulation.start(player, locationName, difficulty, simData)
 			local wp3 = NavigationUtils.getWaypoint(locationName, "EarthquakeSimulation", 3)
 			if not wp3 then
 				warn("[SimController] Sismo: Waypoint3 no encontrado.")
-				simData.setSimulationActive("Earthquake", locationName, false)
-				simData.setPowerMode("NORMAL")
-				simData.controllerHUDEvent:FireClient(player, "Hide")
-				simData.playerSimulationData[player.UserId] = nil
+				services.setSimulationActive("Earthquake", locationName, false)
+				services.setPowerMode("NORMAL")
+				services.controllerHUDEvent:FireClient(player, "Hide")
+				state.playerSimulationData[player.UserId] = nil
 				return
 			end
 
@@ -322,11 +322,11 @@ function EarthquakeSimulation.start(player, locationName, difficulty, simData)
 				task.wait(3)
 
 				EarthquakeSimulation.restoreEarthquakeDrops(originalStates)
-				simData.setSimulationActive("Earthquake", locationName, false)
-				simData.setPowerMode("NORMAL")
-				simData.controllerHUDEvent:FireClient(player, "Hide")
+				services.setSimulationActive("Earthquake", locationName, false)
+				services.setPowerMode("NORMAL")
+				services.controllerHUDEvent:FireClient(player, "Hide")
 				ScoringSystem.showFinalResults(player, session, "Sismo")
-				simData.playerSimulationData[player.UserId] = nil
+				state.playerSimulationData[player.UserId] = nil
 			end)
 		end)
 	end)
