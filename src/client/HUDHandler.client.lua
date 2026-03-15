@@ -41,11 +41,39 @@ local Objectives = {
 	progressFrame:WaitForChild("Obj4")
 }
 
+local ObjectiveLabels = {}
+for i, obj in ipairs(Objectives) do
+	ObjectiveLabels[i] = obj:FindFirstChildWhichIsA("TextLabel", true)
+end
+
 local IMG_INCOMPLETE  = "rbxassetid://139565534034394"
 local IMG_IN_PROGRESS = "rbxassetid://75916766300891"
 local IMG_COMPLETE    = "rbxassetid://94228531190693"
 
 local isHUDVisible = false
+
+local function updateContainerEnabled()
+	HUDContainer.Enabled = isHUDVisible or HUDContainer:GetAttribute("DialogBusy") == true
+end
+
+local function resetHUDContent()
+	Labels.timeLeft.Text = "05:00"
+	Labels.score.Text    = "100"
+
+	for _, obj in ipairs(Objectives) do
+		obj.Image   = IMG_INCOMPLETE
+		obj.Visible = true
+		if obj:FindFirstChild("Icon") then
+			obj.Icon.Image = IMG_INCOMPLETE
+		end
+	end
+
+	for _, label in ipairs(ObjectiveLabels) do
+		if label then
+			label.Text = ""
+		end
+	end
+end
 
 -- Animaciones
 local TWEEN_IN = TweenInfo.new(CONFIG.AnimationDuration, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
@@ -75,6 +103,8 @@ end
 -- Mostrar HUD
 local function showHUD()
 	isHUDVisible = true
+	HUDContainer:SetAttribute("HUDVisible", true)
+	HUDContainer.Enabled = true
 
 	for ui, pos in pairs(SHOW_POSITIONS) do
 		ui.Position = HIDE_POSITIONS[ui]
@@ -90,13 +120,18 @@ local function showHUD()
 end
 
 -- Ocultar HUD
-local function hideHUD()
+local function hideHUD(immediate)
 	isHUDVisible = false
-	Labels.timeLeft.Text = "05:00"
-	Labels.score.Text    = "100"
-	for _, obj in ipairs(Objectives) do
-		obj.Image   = IMG_INCOMPLETE
-		obj.Visible = true
+	HUDContainer:SetAttribute("HUDVisible", false)
+	resetHUDContent()
+
+	if immediate then
+		for ui, pos in pairs(HIDE_POSITIONS) do
+			ui.Position = pos
+		end
+		overlay.ImageTransparency = CONFIG.OverlayHiddenTransparency
+		updateContainerEnabled()
+		return
 	end
 
 	for ui, pos in pairs(HIDE_POSITIONS) do
@@ -109,6 +144,12 @@ local function hideHUD()
 		TWEEN_OUT,
 		{ImageTransparency = CONFIG.OverlayHiddenTransparency}
 	)
+
+	task.delay(CONFIG.AnimationDuration, function()
+		if not isHUDVisible then
+			updateContainerEnabled()
+		end
+	end)
 end
 
 -- Evento remoto
@@ -139,19 +180,30 @@ HUDUpdate.OnClientEvent:Connect(function(
 
 	for i, obj in ipairs(Objectives) do
 		local name = stepNames and stepNames[i]
+		local label = ObjectiveLabels[i]
 		if name then
 			obj.Visible = true
+			if label then
+				label.Text = tostring(name)
+			end
 			if i <= completedSteps then
-				obj.Image = IMG_COMPLETE
+				obj.Icon.Image = IMG_COMPLETE
 			elseif i == completedSteps + 1 then
-				obj.Image = IMG_IN_PROGRESS
+				obj.Icon.Image = IMG_IN_PROGRESS
 			else
-				obj.Image = IMG_INCOMPLETE
+				obj.Icon.Image = IMG_INCOMPLETE
 			end
 		else
 			obj.Visible = false
+			if label then
+				label.Text = ""
+			end
 		end
 	end
 end)
 
-hideHUD()
+HUDContainer:SetAttribute("HUDVisible", false)
+if HUDContainer:GetAttribute("DialogBusy") == nil then
+	HUDContainer:SetAttribute("DialogBusy", false)
+end
+hideHUD(true)

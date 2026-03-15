@@ -93,6 +93,11 @@ local DialogSystem = {
 
 }
 
+local function updateContainerEnabled()
+	HUD.Enabled = HUD:GetAttribute("HUDVisible") == true
+		or HUD:GetAttribute("DialogBusy") == true
+end
+
 function DialogSystem:CancelTween()
 
 	if self.currentTween then
@@ -177,6 +182,8 @@ function DialogSystem:PlayRadio()
 end
 
 function DialogSystem:ShowDialog(data)
+	HUD:SetAttribute("DialogBusy", true)
+	HUD.Enabled = true
 
 	iconLabel.Image = ICON_MAP[data.icon] or ""
 
@@ -239,6 +246,8 @@ function DialogSystem:Process()
 		end
 
 		self.isActive = false
+		HUD:SetAttribute("DialogBusy", false)
+		updateContainerEnabled()
 
 	end)
 
@@ -277,3 +286,7 @@ end)
 -- =============================================================================
 
 dialogContainer.Position = POS_HIDDEN
+if HUD:GetAttribute("DialogBusy") == nil then
+	HUD:SetAttribute("DialogBusy", false)
+end
+updateContainerEnabled()
