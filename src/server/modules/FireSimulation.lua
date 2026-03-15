@@ -291,6 +291,9 @@ function FireSimulation.start(player, locationName, difficulty, simData)
 	}
 
 	local session = simData.playerSimulationData[player.UserId]
+	player.CharacterRemoving:Connect(function()
+		if session then session.simulationEnded = true end
+	end)
 	print(string.format("[SimController] Incendio iniciado: %s — %s — Dificultad %d", player.Name, locationName, difficulty))
 
 	local function recordStep()
@@ -333,6 +336,9 @@ function FireSimulation.start(player, locationName, difficulty, simData)
 	task.spawn(function()
 		while not originDetected and not session.simulationEnded do
 			task.wait(0.5)
+			if not player.Parent then
+				break
+			end
 			if session.simulationEnded then break end
 
 			if player.Character then
