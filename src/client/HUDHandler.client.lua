@@ -13,7 +13,7 @@ local RunService = game:GetService("RunService")
 local HUDUpdate  = ReplicatedStorage:WaitForChild("HUDUpdate")
 
 local CONFIG = {
-	AnimationDuration = 0.4,
+	AnimationDuration = 0.42,
 	OverlayVisibleTransparency = 0.44,
 	OverlayHiddenTransparency = 1
 }
@@ -76,8 +76,23 @@ local function resetHUDContent()
 end
 
 -- Animaciones
-local TWEEN_IN = TweenInfo.new(CONFIG.AnimationDuration, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-local TWEEN_OUT = TweenInfo.new(CONFIG.AnimationDuration, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+local TWEEN_IN = TweenInfo.new(CONFIG.AnimationDuration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local TWEEN_OUT = TweenInfo.new(CONFIG.AnimationDuration - 0.08, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+local STAGGER_STEP = 0.045
+
+local ANIMATION_ORDER = {
+	UI.simulationActive,
+	UI.timeLeft,
+	UI.score,
+	UI.progressContainer,
+}
+
+local DEFAULT_IMAGE_TRANSPARENCY = {}
+for _, ui in ipairs(ANIMATION_ORDER) do
+	DEFAULT_IMAGE_TRANSPARENCY[ui] = ui.ImageTransparency
+end
+
+local hudTransitionToken = 0
 
 local SHOW_POSITIONS = {
 	[UI.simulationActive]  = UDim2.new(0.15, 0, 0.05, 0),
@@ -102,13 +117,23 @@ end
 
 -- Mostrar HUD
 local function showHUD()
+	hudTransitionToken += 1
+	local token = hudTransitionToken
 	isHUDVisible = true
 	HUDContainer:SetAttribute("HUDVisible", true)
 	HUDContainer.Enabled = true
 
-	for ui, pos in pairs(SHOW_POSITIONS) do
+	for index, ui in ipairs(ANIMATION_ORDER) do
 		ui.Position = HIDE_POSITIONS[ui]
-		tweenUI(ui, TWEEN_IN, {Position = pos})
+		ui.ImageTransparency = 1
+		local pos = SHOW_POSITIONS[ui]
+		task.delay((index - 1) * STAGGER_STEP, function()
+			if token ~= hudTransitionToken or not isHUDVisible then return end
+			tweenUI(ui, TWEEN_IN, {
+				Position = pos,
+				ImageTransparency = DEFAULT_IMAGE_TRANSPARENCY[ui],
+			})
+		end)
 	end
 
 	-- Overlay aparece
@@ -121,21 +146,32 @@ end
 
 -- Ocultar HUD
 local function hideHUD(immediate)
+	hudTransitionToken += 1
+	local token = hudTransitionToken
 	isHUDVisible = false
 	HUDContainer:SetAttribute("HUDVisible", false)
 	resetHUDContent()
 
 	if immediate then
-		for ui, pos in pairs(HIDE_POSITIONS) do
-			ui.Position = pos
+		for _, ui in ipairs(ANIMATION_ORDER) do
+			ui.Position = HIDE_POSITIONS[ui]
+			ui.ImageTransparency = 1
 		end
 		overlay.ImageTransparency = CONFIG.OverlayHiddenTransparency
 		updateContainerEnabled()
 		return
 	end
 
-	for ui, pos in pairs(HIDE_POSITIONS) do
-		tweenUI(ui, TWEEN_OUT, {Position = pos})
+	for index = #ANIMATION_ORDER, 1, -1 do
+		local ui = ANIMATION_ORDER[index]
+		local pos = HIDE_POSITIONS[ui]
+		task.delay((#ANIMATION_ORDER - index) * STAGGER_STEP * 0.8, function()
+			if token ~= hudTransitionToken then return end
+			tweenUI(ui, TWEEN_OUT, {
+				Position = pos,
+				ImageTransparency = 1,
+			})
+		end)
 	end
 
 	-- Overlay desaparece
@@ -145,8 +181,8 @@ local function hideHUD(immediate)
 		{ImageTransparency = CONFIG.OverlayHiddenTransparency}
 	)
 
-	task.delay(CONFIG.AnimationDuration, function()
-		if not isHUDVisible then
+	task.delay(TWEEN_OUT.Time + STAGGER_STEP * (#ANIMATION_ORDER - 1), function()
+		if token == hudTransitionToken and not isHUDVisible then
 			updateContainerEnabled()
 		end
 	end)

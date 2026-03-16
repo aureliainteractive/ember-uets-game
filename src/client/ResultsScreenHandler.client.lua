@@ -95,11 +95,23 @@ local RANK_BAND_IMAGES = {
 	RED    = "rbxassetid://88357135721128",
 }
 
-local TWEEN_IN  = TweenInfo.new(0.4, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
-local TWEEN_OUT = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+local TWEEN_IN  = TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local TWEEN_OUT = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+local ROW_TWEEN_IN = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local ROW_STAGGER = 0.04
 
 local POS_VISIBLE = UDim2.new(0.5, 0, 0.5, 0)  -- centred
 local POS_HIDDEN  = UDim2.new(0.5, 0, 1.6, 0)  -- below screen
+
+local DEFAULT_CONTAINER_IMAGE_TRANSPARENCY = Container.ImageTransparency
+
+local function setRowTextTransparency(row, value)
+	for _, desc in ipairs(row:GetDescendants()) do
+		if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+			desc.TextTransparency = value
+		end
+	end
+end
 
 -- ============================================================
 -- HELPERS
@@ -108,11 +120,32 @@ local POS_HIDDEN  = UDim2.new(0.5, 0, 1.6, 0)  -- below screen
 local function showScreen()
 	Screen.Enabled = true
 	Container.Position = POS_HIDDEN
-	TweenService:Create(Container, TWEEN_IN, { Position = POS_VISIBLE }):Play()
+	Container.ImageTransparency = 1
+	for _, row in ipairs(StepRows) do
+		setRowTextTransparency(row, 1)
+	end
+	TweenService:Create(Container, TWEEN_IN, {
+		Position = POS_VISIBLE,
+		ImageTransparency = DEFAULT_CONTAINER_IMAGE_TRANSPARENCY,
+	}):Play()
+
+	for index, row in ipairs(StepRows) do
+		task.delay((index - 1) * ROW_STAGGER + 0.12, function()
+			if not Screen.Enabled or not row.Visible then return end
+			for _, desc in ipairs(row:GetDescendants()) do
+				if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+					TweenService:Create(desc, ROW_TWEEN_IN, { TextTransparency = 0 }):Play()
+				end
+			end
+		end)
+	end
 end
 
 local function hideScreen()
-	local t = TweenService:Create(Container, TWEEN_OUT, { Position = POS_HIDDEN })
+	local t = TweenService:Create(Container, TWEEN_OUT, {
+		Position = POS_HIDDEN,
+		ImageTransparency = 1,
+	})
 	t:Play()
 	t.Completed:Once(function()
 		Screen.Enabled = false

@@ -3,23 +3,21 @@ local TweenService = game:GetService("TweenService")
 
 -- UTILS ----------------------------------------------------
 
-local function tweenWait(obj, prop, startValue, endValue, duration)
-	obj[prop] = startValue
+local function tweenWait(obj, duration, goal)
 	local tween = TweenService:Create(
 		obj,
-		TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-		{[prop] = endValue}
+		TweenInfo.new(duration, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+		goal
 	)
 	tween:Play()
 	tween.Completed:Wait()
 end
 
-local function tweenAsync(obj, prop, startValue, endValue, duration)
-	obj[prop] = startValue
+local function tweenAsync(obj, duration, goal)
 	local tween = TweenService:Create(
 		obj,
-		TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-		{[prop] = endValue}
+		TweenInfo.new(duration, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+		goal
 	)
 	tween:Play()
 	return tween
@@ -47,31 +45,47 @@ gui.Enabled = true;
 logos.GroupTransparency = 1
 title.TextTransparency = 1
 subtitle.TextTransparency = 1
+local titleBasePos = title.Position
+local subtitleBasePos = subtitle.Position
+title.Position = titleBasePos + UDim2.new(0, 0, 0.03, 0)
+subtitle.Position = subtitleBasePos + UDim2.new(0, 0, 0.03, 0)
 
 --------------------------------------------------------------
 -- SECUENCIA SINCRONIZADA
 --------------------------------------------------------------
 
 -- [0.000 - 2.200] Textos entran
-local tIn1 = tweenAsync(title, "TextTransparency", 1, 0, 2.2)
-local tIn2 = tweenAsync(subtitle, "TextTransparency", 1, 0, 2.2)
+local tIn1 = tweenAsync(title, 1.4, {
+	TextTransparency = 0,
+	Position = titleBasePos,
+})
+local tIn2 = tweenAsync(subtitle, 1.4, {
+	TextTransparency = 0,
+	Position = subtitleBasePos,
+})
 tIn2.Completed:Wait()
 
 -- [2.200 - 3.200] Pausa
-task.wait(1)
+task.wait(0.7)
 
 -- [3.200 - 4.700] Textos salen
-local tOut1 = tweenAsync(title, "TextTransparency", 0, 1, 1.5)
-local tOut2 = tweenAsync(subtitle, "TextTransparency", 0, 1, 1.5)
+local tOut1 = tweenAsync(title, 1.0, {
+	TextTransparency = 1,
+	Position = titleBasePos - UDim2.new(0, 0, 0.02, 0),
+})
+local tOut2 = tweenAsync(subtitle, 1.0, {
+	TextTransparency = 1,
+	Position = subtitleBasePos - UDim2.new(0, 0, 0.02, 0),
+})
 tOut2.Completed:Wait()
 
 -- [4.700 - 8.200] Logos fade-in (3.5 s)
-tweenWait(logos, "GroupTransparency", 1, 0, 3.5)
+tweenWait(logos, 2.4, {GroupTransparency = 0})
 
 -- [8.200 - 11.200] Logos fade-out (3 s)
-tweenWait(logos, "GroupTransparency", 0, 1, 3)
+tweenWait(logos, 2.0, {GroupTransparency = 1})
 
 -- [11.200 - 12.095] Fade a negro
-tweenWait(blk, "BackgroundTransparency", blk.BackgroundTransparency, 1, 0.895)
+tweenWait(blk, 0.8, {BackgroundTransparency = 1})
 
 gui.Enabled = false

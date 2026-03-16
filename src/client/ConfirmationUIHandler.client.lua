@@ -51,11 +51,19 @@ local ObjectiveLabels = {
 }
 
 -- ── ANIMATION ──────────────────────────────────────────────────────
-local TWEEN_IN  = TweenInfo.new(0.35, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
-local TWEEN_OUT = TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+local TWEEN_IN  = TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local TWEEN_OUT = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+local STAGGER_STEP = 0.05
+local ANIMATION_ORDER = { Panel, Controles, btnConfirm }
+
+local DEFAULT_IMAGE_TRANSPARENCY = {
+	[Panel] = Panel.ImageTransparency,
+	[Controles] = Controles.ImageTransparency,
+	[btnConfirm] = btnConfirm.ImageTransparency,
+}
 
 local function toHidden(pos)
-	return UDim2.new(pos.X.Scale, pos.X.Offset, pos.Y.Scale + 1.1, pos.Y.Offset)
+	return UDim2.new(pos.X.Scale, pos.X.Offset, pos.Y.Scale + 0.25, pos.Y.Offset)
 end
 
 local VISIBLE_POSITIONS = {
@@ -75,25 +83,42 @@ local transitionToken = 0
 local function setHiddenImmediate()
 	for ui, hiddenPos in pairs(HIDDEN_POSITIONS) do
 		ui.Position = hiddenPos
+		ui.ImageTransparency = 1
 	end
 end
 
 local function showUI()
 	transitionToken += 1
+	local token = transitionToken
 	Screen.Enabled = true
 	setHiddenImmediate()
-	for ui, visiblePos in pairs(VISIBLE_POSITIONS) do
-		TweenService:Create(ui, TWEEN_IN, { Position = visiblePos }):Play()
+	for index, ui in ipairs(ANIMATION_ORDER) do
+		local visiblePos = VISIBLE_POSITIONS[ui]
+		task.delay((index - 1) * STAGGER_STEP, function()
+			if token ~= transitionToken or not Screen.Enabled then return end
+			TweenService:Create(ui, TWEEN_IN, {
+				Position = visiblePos,
+				ImageTransparency = DEFAULT_IMAGE_TRANSPARENCY[ui],
+			}):Play()
+		end)
 	end
 end
 
 local function hideUI()
 	transitionToken += 1
 	local token = transitionToken
-	for ui, hiddenPos in pairs(HIDDEN_POSITIONS) do
-		TweenService:Create(ui, TWEEN_OUT, { Position = hiddenPos }):Play()
+	for index = #ANIMATION_ORDER, 1, -1 do
+		local ui = ANIMATION_ORDER[index]
+		local hiddenPos = HIDDEN_POSITIONS[ui]
+		task.delay((#ANIMATION_ORDER - index) * STAGGER_STEP * 0.8, function()
+			if token ~= transitionToken then return end
+			TweenService:Create(ui, TWEEN_OUT, {
+				Position = hiddenPos,
+				ImageTransparency = 1,
+			}):Play()
+		end)
 	end
-	task.delay(0.25, function()
+	task.delay(TWEEN_OUT.Time + STAGGER_STEP * (#ANIMATION_ORDER - 1), function()
 		if token == transitionToken then
 			Screen.Enabled = false
 		end

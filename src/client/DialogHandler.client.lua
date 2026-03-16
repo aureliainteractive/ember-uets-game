@@ -70,11 +70,15 @@ local PRIORITY = {
 -- POSICIONES
 -- =============================================================================
 
-local TWEEN_IN = TweenInfo.new(CONFIG.AnimationDuration, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-local TWEEN_OUT = TweenInfo.new(CONFIG.AnimationDuration, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+local TWEEN_IN = TweenInfo.new(CONFIG.AnimationDuration + 0.05, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local TWEEN_OUT = TweenInfo.new(CONFIG.AnimationDuration - 0.05, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 
 local POS_VISIBLE = UDim2.new(0.5,0,0.9,0)
 local POS_HIDDEN  = UDim2.new(0.5,0,1.3,0)
+
+local DEFAULT_DIALOG_IMAGE_TRANSPARENCY = dialogContainer.ImageTransparency
+local DEFAULT_TEXT_TRANSPARENCY = textLabel.TextTransparency
+local DEFAULT_ICON_TRANSPARENCY = iconLabel.ImageTransparency
 
 -- =============================================================================
 -- SISTEMA
@@ -186,6 +190,7 @@ function DialogSystem:ShowDialog(data)
 	HUD.Enabled = true
 
 	iconLabel.Image = ICON_MAP[data.icon] or ""
+	iconLabel.Visible = iconLabel.Image ~= ""
 
 	self.lastDialog.text = data.text
 	self.lastDialog.time = tick()
@@ -193,15 +198,25 @@ function DialogSystem:ShowDialog(data)
 	self:CancelTween()
 
 	dialogContainer.Position = POS_HIDDEN
+	dialogContainer.ImageTransparency = 1
+	textLabel.TextTransparency = 1
+	iconLabel.ImageTransparency = 1
 
 	local tweenIn = TweenService:Create(
 		dialogContainer,
 		TWEEN_IN,
-		{Position = POS_VISIBLE}
+		{
+			Position = POS_VISIBLE,
+			ImageTransparency = DEFAULT_DIALOG_IMAGE_TRANSPARENCY,
+		}
 	)
+	local textFadeIn = TweenService:Create(textLabel, TWEEN_IN, {TextTransparency = DEFAULT_TEXT_TRANSPARENCY})
+	local iconFadeIn = TweenService:Create(iconLabel, TWEEN_IN, {ImageTransparency = DEFAULT_ICON_TRANSPARENCY})
 
 	self.currentTween = tweenIn
 	tweenIn:Play()
+	textFadeIn:Play()
+	iconFadeIn:Play()
 	tweenIn.Completed:Wait()
 
 	self:PlayRadio()
@@ -213,11 +228,18 @@ function DialogSystem:ShowDialog(data)
 	local tweenOut = TweenService:Create(
 		dialogContainer,
 		TWEEN_OUT,
-		{Position = POS_HIDDEN}
+		{
+			Position = POS_HIDDEN,
+			ImageTransparency = 1,
+		}
 	)
+	local textFadeOut = TweenService:Create(textLabel, TWEEN_OUT, {TextTransparency = 1})
+	local iconFadeOut = TweenService:Create(iconLabel, TWEEN_OUT, {ImageTransparency = 1})
 
 	self.currentTween = tweenOut
 	tweenOut:Play()
+	textFadeOut:Play()
+	iconFadeOut:Play()
 	tweenOut.Completed:Wait()
 
 	self.currentTween = nil
@@ -260,6 +282,9 @@ function DialogSystem:ClearQueue()
 	self:CancelTween()
 
 	dialogContainer.Position = POS_HIDDEN
+	dialogContainer.ImageTransparency = 1
+	textLabel.TextTransparency = 1
+	iconLabel.ImageTransparency = 1
 
 end
 
@@ -286,6 +311,9 @@ end)
 -- =============================================================================
 
 dialogContainer.Position = POS_HIDDEN
+dialogContainer.ImageTransparency = 1
+textLabel.TextTransparency = 1
+iconLabel.ImageTransparency = 1
 if HUD:GetAttribute("DialogBusy") == nil then
 	HUD:SetAttribute("DialogBusy", false)
 end
