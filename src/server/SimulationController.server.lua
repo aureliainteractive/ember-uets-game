@@ -47,7 +47,7 @@ end
 
 local function playIntercomSound(soundId)
 	if not audioPlayer then return end
-	audioPlayer:Stop(); audioPlayer.SoundId = "rbxassetid://" .. soundId; audioPlayer.TimePosition = 0; audioPlayer:Play()
+	audioPlayer:Stop(); audioPlayer.Asset = "rbxassetid://" .. soundId; audioPlayer.TimePosition = 0; audioPlayer:Play()
 end
 
 local function stopIntercom()
@@ -58,7 +58,7 @@ local function startExploreSimulation(player, locationName, _difficulty)
 	setSimulationActive("Explore", locationName, true)
 	NavigationUtils.teleportToSpawn(player, "FireSimulation", locationName)
 	controllerHUDEvent:FireClient(player, "Show")
-	if audioPlayer then audioPlayer:Stop(); audioPlayer.SoundId = "rbxassetid://106924095504453"; audioPlayer.Looped = true; audioPlayer.Volume = 0.6; audioPlayer:Play() end
+	if audioPlayer then audioPlayer:Stop(); audioPlayer.Asset = "rbxassetid://106924095504453"; audioPlayer.Looped = true; audioPlayer.Volume = 0.6; audioPlayer:Play() end
 	print(string.format("[SimController] Exploración iniciada: %s — %s", player.Name, locationName))
 end
 
