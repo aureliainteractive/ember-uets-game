@@ -8,7 +8,7 @@ local HingeDoor = {}
 
 function HingeDoor.init(doorModel)
 	if not doorModel or not doorModel:IsA("Model") then
-		return
+		return false
 	end
 
 	local fullName = doorModel:GetFullName()
@@ -18,17 +18,17 @@ function HingeDoor.init(doorModel)
 
 	if typeof(openAngle) ~= "number" then
 		warn("[HingeDoor] Invalid or missing OpenAngle on " .. fullName)
-		return
+		return false
 	end
 
 	if typeof(openTime) ~= "number" then
 		warn("[HingeDoor] Invalid or missing OpenTime on " .. fullName)
-		return
+		return false
 	end
 
 	if typeof(cooldown) ~= "number" then
 		warn("[HingeDoor] Invalid or missing Cooldown on " .. fullName)
-		return
+		return false
 	end
 
 	local door = doorModel:FindFirstChild("Door")
@@ -37,17 +37,17 @@ function HingeDoor.init(doorModel)
 
 	if not door or not door:IsA("BasePart") then
 		warn("[HingeDoor] Missing Door BasePart on " .. fullName)
-		return
+		return false
 	end
 
 	if not hinge or not hinge:IsA("BasePart") then
 		warn("[HingeDoor] Missing Hinge BasePart on " .. fullName)
-		return
+		return false
 	end
 
 	if not toggleDoor or not toggleDoor:IsA("RemoteEvent") then
 		warn("[HingeDoor] Missing ToggleDoor RemoteEvent on " .. fullName)
-		return
+		return false
 	end
 
 	local closedRelative = hinge.CFrame:ToObjectSpace(door.CFrame)
@@ -93,6 +93,8 @@ function HingeDoor.init(doorModel)
 		isAnimating = false
 		beginCooldown()
 	end)
+
+	return true
 end
 
 return HingeDoor

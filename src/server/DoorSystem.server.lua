@@ -7,6 +7,24 @@ local SlidingDoor = require(script.Parent.modules.doors.SlidingDoor)
 
 local initializedDoors = {}
 
+local function resolveDoorType(model)
+	local declaredType = model:GetAttribute("DoorType")
+	local hasHinge = model:FindFirstChild("Hinge") ~= nil
+	local hasSlidePivot = model:FindFirstChild("SlidePivot") ~= nil
+
+	if declaredType == "Hinge" and hasSlidePivot and not hasHinge then
+		warn("[DoorSystem] DoorType mismatch on " .. model:GetFullName() .. " — using Sliding")
+		return "Sliding"
+	end
+
+	if declaredType == "Sliding" and hasHinge and not hasSlidePivot then
+		warn("[DoorSystem] DoorType mismatch on " .. model:GetFullName() .. " — using Hinge")
+		return "Hinge"
+	end
+
+	return declaredType
+end
+
 local function initDoorModel(model)
 	if not model:IsA("Model") then
 		return
@@ -16,7 +34,7 @@ local function initDoorModel(model)
 		return
 	end
 
-	local doorType = model:GetAttribute("DoorType")
+	local doorType = resolveDoorType(model)
 	if typeof(doorType) ~= "string" then
 		if model:FindFirstChild("ToggleDoor") then
 			warn("[DoorSystem] Unknown DoorType on " .. model:GetFullName() .. " — skipped")
@@ -25,16 +43,20 @@ local function initDoorModel(model)
 	end
 
 	if doorType == "Hinge" then
-		HingeDoor.init(model)
-		initializedDoors[model] = true
-		print("[DoorSystem] Initialized: " .. model:GetFullName() .. " (Hinge)")
+		local ok = HingeDoor.init(model)
+		if ok then
+			initializedDoors[model] = true
+			print("[DoorSystem] Initialized: " .. model:GetFullName() .. " (Hinge)")
+		end
 		return
 	end
 
 	if doorType == "Sliding" then
-		SlidingDoor.init(model)
-		initializedDoors[model] = true
-		print("[DoorSystem] Initialized: " .. model:GetFullName() .. " (Sliding)")
+		local ok = SlidingDoor.init(model)
+		if ok then
+			initializedDoors[model] = true
+			print("[DoorSystem] Initialized: " .. model:GetFullName() .. " (Sliding)")
+		end
 		return
 	end
 

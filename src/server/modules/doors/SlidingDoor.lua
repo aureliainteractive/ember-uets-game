@@ -8,7 +8,7 @@ local SlidingDoor = {}
 
 function SlidingDoor.init(doorModel)
 	if not doorModel or not doorModel:IsA("Model") then
-		return
+		return false
 	end
 
 	local fullName = doorModel:GetFullName()
@@ -19,22 +19,22 @@ function SlidingDoor.init(doorModel)
 
 	if typeof(slideDistance) ~= "number" then
 		warn("[SlidingDoor] Invalid or missing SlideDistance on " .. fullName)
-		return
+		return false
 	end
 
 	if typeof(slideTime) ~= "number" then
 		warn("[SlidingDoor] Invalid or missing SlideTime on " .. fullName)
-		return
+		return false
 	end
 
 	if typeof(slideDirection) ~= "number" then
 		warn("[SlidingDoor] Invalid or missing SlideDirection on " .. fullName)
-		return
+		return false
 	end
 
 	if typeof(cooldown) ~= "number" then
 		warn("[SlidingDoor] Invalid or missing Cooldown on " .. fullName)
-		return
+		return false
 	end
 
 	local door = doorModel:FindFirstChild("Door")
@@ -43,17 +43,17 @@ function SlidingDoor.init(doorModel)
 
 	if not door or not door:IsA("BasePart") then
 		warn("[SlidingDoor] Missing Door BasePart on " .. fullName)
-		return
+		return false
 	end
 
 	if not slidePivot or not slidePivot:IsA("BasePart") then
 		warn("[SlidingDoor] Missing SlidePivot BasePart on " .. fullName)
-		return
+		return false
 	end
 
 	if not toggleDoor or not toggleDoor:IsA("RemoteEvent") then
 		warn("[SlidingDoor] Missing ToggleDoor RemoteEvent on " .. fullName)
-		return
+		return false
 	end
 
 	local closedPosition = door.Position
@@ -100,6 +100,8 @@ function SlidingDoor.init(doorModel)
 		isAnimating = false
 		beginCooldown()
 	end)
+
+	return true
 end
 
 return SlidingDoor
