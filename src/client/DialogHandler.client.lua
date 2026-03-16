@@ -42,11 +42,11 @@ local CONFIG = {
 
 local ICON_MAP = {
 
-	Info    = "rbxassetid://112518539889641",
-	Warning = "rbxassetid://75516195471484",
-	Success = "rbxassetid://85342180400600",
-	Error   = "rbxassetid://120484703726107",
-	Result  = "rbxassetid://124093011962460",
+	Info    = "rbxassetid://88497389453400",
+	Warning = "rbxassetid://86393744209066",
+	Success = "rbxassetid://123913911760584",
+	Error   = "rbxassetid://77702474213008",
+	Result  = "rbxassetid://94199853920673",
 
 }
 
