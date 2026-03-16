@@ -8,6 +8,7 @@ local DialogService = require(script.Parent.DialogService)
 local NavigationUtils = require(script.Parent.NavigationUtils)
 local ScoringSystem = require(script.Parent.ScoringSystem)
 local ResultsSystem = require(script.Parent.ResultsSystem)
+local KioskConfig   = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 
 local RNG = Random.new()
 
@@ -219,12 +220,13 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 
 	local refuges = NavigationUtils.getRefuges(locationName, "EarthquakeSimulation")
 
+	local steps = KioskConfig.getSteps("EarthquakeSimulation")
 	state.playerSimulationData[player.UserId] = {
 		startTime = tick(),
 		waypointTimes = {},
 		lastWaypointTime = tick(),
-		maxTimes = { 12, 18, 15 },
-		stepNames = { "Refugiarse", "Evacuacion", "Zona segura" },
+		maxTimes = steps.maxTimes,
+		stepNames = steps.stepNames,
 		connections = {},
 	}
 

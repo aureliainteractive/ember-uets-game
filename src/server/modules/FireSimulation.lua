@@ -1,12 +1,15 @@
 -- FireSimulation
 -- Purpose: Fire drill flow, procedural fire behavior, and firefighter visibility control.
--- Dependencies: DialogService, NavigationUtils, ActuatorService, ScoringSystem
+-- Dependencies: DialogService, NavigationUtils, ActuatorService, ScoringSystem, KioskConfig
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local DialogService = require(script.Parent.DialogService)
 local NavigationUtils = require(script.Parent.NavigationUtils)
 local ActuatorService = require(script.Parent.ActuatorService)
 local ScoringSystem = require(script.Parent.ScoringSystem)
 local ResultsSystem = require(script.Parent.ResultsSystem)
+local KioskConfig   = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 
 local RNG = Random.new()
 
@@ -279,12 +282,13 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 		return
 	end
 
+	local steps = KioskConfig.getSteps("FireSimulation")
 	state.playerSimulationData[player.UserId] = {
 		startTime = tick(),
 		waypointTimes = {},
 		lastWaypointTime = tick(),
-		maxTimes = { 15, 10, 20, 15 },
-		stepNames = { "Deteccion", "Alarma", "Evacuacion", "Punto de encuentro" },
+		maxTimes = steps.maxTimes,
+		stepNames = steps.stepNames,
 		connections = {},
 		seedPart = seedPart,
 		simulationEnded = false,

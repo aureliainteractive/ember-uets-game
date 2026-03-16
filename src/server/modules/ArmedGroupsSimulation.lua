@@ -8,6 +8,7 @@ local DialogService = require(script.Parent.DialogService)
 local NavigationUtils = require(script.Parent.NavigationUtils)
 local ScoringSystem = require(script.Parent.ScoringSystem)
 local ResultsSystem = require(script.Parent.ResultsSystem)
+local KioskConfig   = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 
 local atacantNPC = ReplicatedStorage:WaitForChild("Atacant NPC")
 local AtacantsSpawns = workspace:WaitForChild("AtacantsSpawns")
@@ -64,12 +65,13 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 
 	local refuges = NavigationUtils.getRefuges(locationName, "ArmedGroupsSimulation")
 
+	local steps = KioskConfig.getSteps("ArmedGroupsSimulation")
 	state.playerSimulationData[player.UserId] = {
 		startTime = tick(),
 		waypointTimes = {},
 		lastWaypointTime = tick(),
-		maxTimes = { 10, 20, 15, 18 },
-		stepNames = { "Alerta", "Confinamiento", "Verificacion", "Evacuacion" },
+		maxTimes = steps.maxTimes,
+		stepNames = steps.stepNames,
 		connections = {},
 	}
 

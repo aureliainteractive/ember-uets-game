@@ -1,10 +1,19 @@
 -- KioskController
 -- Purpose: Physical in-world kiosk for simulation configuration
 --          and launch. Detects player proximity via Hitbox part,
---          presents mode/location/difficulty selection UI, then
---          fires SimulationStartBindable to start the simulation.
+--          presents mode/location/difficulty selection UI, shows
+--          a ConfirmationUI ScreenGui on the player's screen for
+--          the final confirm/cancel step, then fires
+--          SimulationStartBindable to start the simulation.
 -- Place file: Workspace.Menu (Model) must exist with children
 --             MenuScreen (Part > SurfaceGui) and Hitbox (Part).
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- KioskConfig: display names, descriptions, and step data.
+local KioskConfig = require(
+	ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig")
+)
 
 local Menu       = workspace:WaitForChild("Menu")
 local gui        = Menu:WaitForChild("MenuScreen"):WaitForChild("SurfaceGui")
@@ -19,10 +28,24 @@ local awaitTouchLabel         = blk:WaitForChild("WaitingLabel")
 local infoLabel               = blk:WaitForChild("infoLabel")
 local confLabelsFrame         = gui:WaitForChild("ConfirmationLabels")
 local confInfoFrame           = gui:WaitForChild("ConfirmationInfo")
-local confPlayBtn             = gui:WaitForChild("ConfirmationPlay")
 
 local SimulationStartBindable =
-  game.ReplicatedStorage:WaitForChild("SimulationStartBindable")
+	ReplicatedStorage:WaitForChild("SimulationStartBindable")
+
+-- ── ConfirmationUI RemoteEvents ──────────────────────────────────
+-- Created here (server-authoritative) and waited on by the client.
+local function getOrCreate(name)
+	local existing = ReplicatedStorage:FindFirstChild(name)
+	if existing then return existing end
+	local e = Instance.new("RemoteEvent")
+	e.Name   = name
+	e.Parent = ReplicatedStorage
+	return e
+end
+
+local kioskShowConfirmationEvent = getOrCreate("KioskShowConfirmation")
+local kioskConfirmEvent          = getOrCreate("KioskConfirm")
+local kioskCancelEvent           = getOrCreate("KioskCancel")
 
 local selectionEvent = Instance.new("BindableEvent")
 
@@ -50,6 +73,12 @@ end
 
 -- Resets all kiosk UI and state variables to idle.
 local function resetKiosk()
+	-- Hide ConfirmationUI on the player's screen before clearing state.
+	if currentPlayer and currentPlayer.Parent then
+		pcall(function()
+			kioskShowConfirmationEvent:FireClient(currentPlayer, nil)
+		end)
+	end
 	currentPlayer                 = nil
 	configInProgress              = false
 	mode, diff, loc               = nil, nil, nil
@@ -60,55 +89,98 @@ local function resetKiosk()
 	DiffSelectorFrame.Visible     = false
 	confInfoFrame.Visible         = false
 	confLabelsFrame.Visible       = false
-	confPlayBtn.Visible           = false
 	infoLabel.Visible             = false
 	blk.Visible                   = false
+	-- Unblock any coroutine waiting on a selection or confirmation step.
+	selectionEvent:Fire()
 end
 
--- Runs the full mode → location → difficulty selection flow.
+-- Runs the full mode → location → difficulty → confirmation flow.
 local function startConfig()
-	configInProgress = true
+	configInProgress   = true
 	startConfigBtn.Visible = false
-	infoLabel.Visible = true
+	blk.Visible        = true
+	infoLabel.Visible  = true
 
+	-- Step 1: Mode
 	ModeSelectorFrame.Visible = true
 	infoLabel.Text = "Selecciona el Simulacro que deseas jugar"
 	mode = waitForButtonClick(ModeSelectorFrame)
 	ModeSelectorFrame.Visible = false
+	if not mode or not currentPlayer then configInProgress = false; return end
 
+	-- Step 2: Location
 	LocationSelectorFrame.Visible = true
 	infoLabel.Text = "Selecciona la Ubicación donde deseas empezar"
 	loc = waitForButtonClick(LocationSelectorFrame)
 	LocationSelectorFrame.Visible = false
+	if not loc or not currentPlayer then configInProgress = false; return end
 
+	-- Step 3: Difficulty
 	DiffSelectorFrame.Visible = true
 	infoLabel.Text = "Selecciona la dificultad en la que deseas jugar"
 	diff = waitForButtonClick(DiffSelectorFrame)
 	DiffSelectorFrame.Visible = false
+	if not diff or not currentPlayer then configInProgress = false; return end
 
-	confInfoFrame.modeLabel.Text     = mode
-	confInfoFrame.diffLabel.Text     = diff
+	-- Step 4: Confirmation — show summary on the kiosk surface using
+	-- display-friendly names from KioskConfig, then show the ScreenGui
+	-- ConfirmationUI on the player's screen and await their decision.
+	confInfoFrame.modeLabel.Text     = KioskConfig.getModeDisplay(mode)
+	confInfoFrame.diffLabel.Text     = KioskConfig.getDifficultyDisplay(diff)
 	confInfoFrame.locationLabel.Text = loc
-	confInfoFrame.Visible  = true
-	confLabelsFrame.Visible = true
-	confPlayBtn.Visible    = true
-end
+	confInfoFrame.Visible            = true
+	confLabelsFrame.Visible          = true
+	infoLabel.Text = "Confirma la selección en tu pantalla"
 
--- Fires simulation start when player confirms selection.
-confPlayBtn.MouseButton1Click:Connect(function()
-	local playerSnapshot = currentPlayer
-	if not (mode and diff and loc
-		and playerSnapshot
-		and playerSnapshot.Parent) then
-		return
-	end
+	kioskShowConfirmationEvent:FireClient(currentPlayer, {
+		mode     = mode,
+		location = loc,
+		diff     = diff,
+	})
+
+	-- Wait for the player to confirm or cancel via the ConfirmationUI.
+	local confirmed = false
+
+	local confirmConn = kioskConfirmEvent.OnServerEvent:Connect(function(p)
+		if p == currentPlayer then
+			confirmed = true
+			selectionEvent:Fire()
+		end
+	end)
+	local cancelConn = kioskCancelEvent.OnServerEvent:Connect(function(p)
+		if p == currentPlayer then
+			confirmed = false
+			selectionEvent:Fire()
+		end
+	end)
+
+	selectionEvent.Event:Wait()
+	confirmConn:Disconnect()
+	cancelConn:Disconnect()
 
 	confInfoFrame.Visible   = false
 	confLabelsFrame.Visible = false
-	confPlayBtn.Visible     = false
-	blk.Visible             = true
-	infoLabel.Visible       = true
-	infoLabel.Text          = "Iniciando simulación..."
+
+	if not confirmed or not currentPlayer then
+		-- Player cancelled or the session was reset externally.
+		configInProgress = false
+		mode, diff, loc  = nil, nil, nil
+		if currentPlayer then
+			-- Player is still in range — let them retry.
+			infoLabel.Text = "Selección cancelada. Intenta de nuevo."
+			task.wait(2)
+			if currentPlayer then
+				infoLabel.Visible      = false
+				startConfigBtn.Visible = true
+			end
+		end
+		return
+	end
+
+	-- Confirmed — launch the simulation.
+	local playerSnapshot = currentPlayer
+	infoLabel.Text = "Iniciando simulación..."
 
 	SimulationStartBindable:Fire(playerSnapshot, mode, loc, diff)
 	print("Simulación iniciada para " .. playerSnapshot.Name)
@@ -123,7 +195,7 @@ confPlayBtn.MouseButton1Click:Connect(function()
 	if currentPlayer then
 		startConfigBtn.Visible = true
 	end
-end)
+end
 
 startConfigBtn.MouseButton1Click:Connect(startConfig)
 
