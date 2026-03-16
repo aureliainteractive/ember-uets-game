@@ -23,22 +23,29 @@ This document describes each major system in the EMBER simulator, its purpose, t
 15. [Firefighter NPC Manager](#15-firefighter-npc-manager)
 16. [Physical Actuator Integration](#16-physical-actuator-integration)
 17. [Door System](#17-door-system)
+18. [Kiosk System](#18-kiosk-system)
+19. [Confirmation UI System](#19-confirmation-ui-system)
+20. [Results Screen System](#20-results-screen-system)
+21. [HUD Ticker (HUDService)](#21-hud-ticker-hudservice)
+22. [Kiosk Configuration (KioskConfig)](#22-kiosk-configuration-kioskconfig)
 
 ---
 
 ## 1. Simulation Controller
 
-**Purpose:** Central coordinator and entry point for all simulation types. Manages the full lifecycle of each simulation from start to cleanup.
+**Purpose:** Central coordinator and entry point for all simulation types. Dispatches to per-simulation modules and manages shared server state.
 
 **Script:** `src/server/SimulationController.server.lua`
 
 **Responsibilities:**
-- Listens to `SimulationStartBindable` (BindableEvent) and dispatches to the correct simulation handler based on `eventType`.
+- Requires simulation modules (`FireSimulation`, `EarthquakeSimulation`, `ArmedGroupsSimulation`) and service modules at startup.
+- Listens to `SimulationStartBindable` (BindableEvent) and dispatches to the correct simulation module based on `eventType`.
 - Prevents duplicate concurrent simulations for the same type and location using `activeSimulations`.
 - Stores per-player simulation state in `playerSimulationData` (step times, connections, seed references, completion flags).
-- Provides shared utilities used by all simulation types: teleportation, waypoint setup, dialog dispatch, power mode changes, and highlight management.
+- Builds and passes `services` and `state` context tables into each simulation module call.
+- Handles `HighlightPartBindable`, `FinishedTaskBindable`, and `PhysicalActuatorBindable` BindableEvents.
 - Cleans up all state when a player disconnects mid-simulation.
-- Enforces a global 5-minute safety timeout on any simulation.
+- Each simulation module independently enforces a global 5-minute safety timeout.
 
 **Input event:**
 ```
@@ -46,13 +53,14 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 ```
 
 **Interacts with:**
-- Dialog Notification System (via `ShowDialog` RemoteEvent)
-- HUD System (via `ControllerUI_HUD` RemoteEvent)
+- Dialog Notification System (via `DialogService`)
+- HUD System (via `ControllerUI_HUD` RemoteEvent and `HUDService` ticker)
 - Camera Shake System (via `CameraShakeEvent` RemoteEvent)
 - Global Lighting System (via `Lighting:SetAttribute("PowerMode", ...)`)
-- Scoring and Results System (calls `showFinalResults`)
-- Waypoint and Refuge Detection System (calls `setupWaypointDetection`, `setupRefugeDetection`)
-- Firefighter NPC Manager (calls `showFirefighters`, `hideFirefighters`)
+- Scoring and Results System (`ResultsSystem.show()`)
+- Waypoint and Refuge Detection System (`NavigationUtils`)
+- Firefighter NPC Manager (`FireSimulation.hideFirefighters`, `FireSimulation.showFirefighters`)
+- Physical Actuator Integration (`ActuatorService`)
 - Physical Actuator Integration (via `PhysicalActuatorBindable`)
 
 ---
@@ -61,7 +69,7 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 
 **Purpose:** Simulates a fire emergency scenario inside a building. Guides the player through a 4-step evacuation protocol while procedural fire spreads through the building.
 
-**Script:** `src/server/SimulationController.server.lua` — function `startFireSimulation()`
+**Script:** `src/server/modules/FireSimulation.lua` — function `FireSimulation.start()`
 
 **Protocol steps:**
 1. Locate the fire origin (proximity detection within 40 studs).
@@ -100,7 +108,7 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 
 **Purpose:** Simulates a seismic event. Players shelter in place, then evacuate. Physics-based object drops and camera shake create immersive stress.
 
-**Script:** `src/server/SimulationController.server.lua` — function `startEarthquakeSimulation()`
+**Script:** `src/server/modules/EarthquakeSimulation.lua` — function `EarthquakeSimulation.start()`
 
 **Protocol steps:**
 1. Shelter in place at a designated refuge point.
@@ -142,7 +150,7 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 
 **Purpose:** Simulates a Code Red (armed intruder) emergency protocol. Players follow a lockdown and evacuation sequence while antagonist NPCs are present in the building.
 
-**Script:** `src/server/SimulationController.server.lua` — function `startArmedGroupsSimulation()`
+**Script:** `src/server/modules/ArmedGroupsSimulation.lua` — function `ArmedGroupsSimulation.start()`
 
 **Protocol steps:**
 1. Activate the institutional alert (reach Waypoint1 — panic button).
@@ -175,7 +183,7 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 
 **Purpose:** Allows players to freely roam a building location before attempting a timed simulation, familiarizing themselves with exit routes and layout.
 
-**Script:** `src/server/SimulationController.server.lua` — function `startExploreSimulation()`
+**Script:** `src/server/SimulationController.server.lua` — function `startExploreSimulation()` (inline, not in a separate module)
 
 **Behavior:**
 - Teleports the player to the `FireSimulation` spawn (reuses same spawn points).
@@ -189,38 +197,58 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 
 ## 6. Scoring and Results System
 
-**Purpose:** Measures player performance at each step of a simulation and presents a final grade.
+**Purpose:** Measures player performance at each step of a simulation, computes a rank, and presents detailed results on a dedicated screen.
 
-**Script:** `src/server/SimulationController.server.lua` — functions `calculateScore()`, `showFinalResults()`
+**Scripts:**
+- `src/server/modules/ScoringSystem.lua` — legacy score helpers (used by `HUDService` for the live score display).
+- `src/server/modules/ResultsSystem.lua` — authoritative results computation and delivery (fires `ShowResults` RemoteEvent).
+- `src/client/ResultsScreenHandler.client.lua` — receives and displays the results payload on the client.
 
-**Mechanism:**
-- Each simulation records elapsed time per step in `simData.waypointTimes`.
-- `maxTimes` array defines the target time for each step (set per simulation type).
-- `calculateScore()` maps each step's time-to-max ratio to a point value:
+**ScoringSystem (live score, used by HUDService):**
+- `calculateScore(times, maxTimes)` — returns an average 0–100 score, mapping each step's time-to-max ratio:
 
 | Time vs. max | Points |
 |---|---|
-| ≤ 70% of max | 100 (Excellent) |
-| ≤ 100% of max | 85 (Good) |
-| ≤ 130% of max | 70 (Regular) |
-| > 130% of max | 50 (Insufficient) |
+| ≤ 70% of max | 100 |
+| ≤ 100% of max | 85 |
+| ≤ 130% of max | 70 |
+| > 130% of max | 50 |
 
-- The final score is the average across all steps (0–100).
+- `getGrade(score)` — maps score to legacy grade string (EXCELENTE / BUENO / REGULAR / NECESITA MEJORAR).
 
-**Grade thresholds:**
+**ResultsSystem (end-of-simulation):**
+- Each step earns points from a finer-grained scale:
 
-| Score | Grade |
+| Time vs. max | Points |
 |---|---|
-| ≥ 90 | EXCELENTE |
-| ≥ 75 | BUENO |
-| ≥ 60 | REGULAR |
-| < 60 | NECESITA MEJORAR |
+| ≤ 50% of max | 1000 (Perfect) |
+| ≤ 70% of max | 800 (Excellent) |
+| ≤ 100% of max | 600 (Completed) |
+| ≤ 130% of max | 400 (Late) |
+| > 130% of max | 200 (Very Late) |
+
+- The rank is assigned based on total points earned as a ratio of the maximum possible (`stepCount × 1000`):
+
+| Ratio | Rank |
+|---|---|
+| ≥ 90% | S |
+| ≥ 80% | A+ |
+| ≥ 70% | A |
+| ≥ 60% | B+ |
+| ≥ 50% | B |
+| ≥ 40% | C+ |
+| ≥ 30% | C |
+| < 30% | D |
+
+- Additional metrics computed: `precision` (total budget / total used × 100%), `criticalErrors` (steps where time > 1.5× max), `totalTime` (MM:SS), `objectivesDone` / `objectivesTotal`.
 
 **Results delivery:**
-- Sends multiple `Result`-type dialog messages (header, grade, per-step breakdown, total time).
-- Teleports the player to `Spawnpoints/MainLobby` after a short delay.
+- `ResultsSystem.show()` fires `ShowResults:FireClient(player, payload)` after a 2-second delay.
+- `ResultsScreenHandler` receives the payload, populates the results screen, and animates it in.
+- The player clicks the return button, which fires `ReturnToLobby:FireServer()`.
+- `ResultsSystem` handles `ReturnToLobby` and teleports the player to `Spawnpoints/MainLobby`.
 
-**Interacts with:** Dialog System, Simulation Controller.
+**Interacts with:** HUD Ticker (ScoringSystem), Dialog System (ScoringSystem legacy path), Results Screen System, Simulation Controller.
 
 ---
 
@@ -228,7 +256,7 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 
 **Purpose:** Detects when a player physically reaches a required location during a simulation step.
 
-**Script:** `src/server/SimulationController.server.lua` — functions `setupWaypointDetection()`, `setupRefugeDetection()`, `getWaypoint()`, `getRefuges()`
+**Script:** `src/server/modules/NavigationUtils.lua` — functions `setupWaypointDetection()`, `setupRefugeDetection()`, `getWaypoint()`, `getRefuges()`
 
 **Waypoint detection:**
 - Connects a `Touched` event on the target `BasePart`.
@@ -293,6 +321,7 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 
 **Features:**
 - Responds to `ControllerUI_HUD` RemoteEvent with `"Show"` or `"Hide"` action strings.
+- Responds to `HUDUpdate` RemoteEvent: receives `(timeLeft, score, completedSteps, stepNames)` pushed once per second by the server-side `HUDService` ticker and updates the live display.
 - Animates four UI panels with TweenService (Back easing): each panel has a defined `SHOW_POSITIONS` and `HIDE_POSITIONS` entry.
 - Also tweens an `Overlay` image transparency between 0.44 (visible) and 1.0 (hidden).
 - Initializes hidden on script load.
@@ -301,11 +330,11 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 | Panel | Purpose |
 |---|---|
 | `SimProgreso` | Active simulation indicator |
-| `TiempoRestante` | Countdown timer (updated externally) |
-| `Puntuacion` | Score display (updated externally) |
-| `ProgresoActual` | Objectives checklist (Obj1–Obj4) |
+| `TiempoRestante` | Countdown timer (live-updated via `HUDUpdate`) |
+| `Puntuacion` | Score display (live-updated via `HUDUpdate`) |
+| `ProgresoActual` | Objectives checklist (Obj1–Obj4, live-updated via `HUDUpdate`) |
 
-**Interacts with:** Simulation Controller (server sends Show/Hide), Dialog System (same ScreenGui).
+**Interacts with:** Simulation Controller (Show/Hide), HUD Ticker — `HUDService` (live data), Dialog System (same ScreenGui).
 
 ---
 
@@ -437,13 +466,13 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 
 **Purpose:** Keeps firefighter NPCs hidden below the map when no fire simulation is active, and restores them when one begins.
 
-**Script:** `src/server/SimulationController.server.lua` — functions `initializeFirefighters()`, `hideFirefighters()`, `showFirefighters()`
+**Script:** `src/server/modules/FireSimulation.lua` — functions `FireSimulation.initializeFirefighters()`, `FireSimulation.hideFirefighters()`, `FireSimulation.showFirefighters()`
 
 **Mechanism:**
 - On first call to `initializeFirefighters()`, scans `FireWaypoints/Firefighters/` for all `HumanoidRootPart` BaseParts and saves their original `CFrame` and `Anchored` state.
 - `hideFirefighters()` — anchors each HRP and moves it 100 studs below its original position. Zeroes all velocity.
 - `showFirefighters()` — restores each HRP to its original CFrame and anchored state.
-- Firefighters are hidden at server startup and shown only during active fire simulations.
+- Firefighters are hidden at server startup (called from `SimulationController`) and shown only during active fire simulations.
 
 **Interacts with:** Fire Simulation System.
 
@@ -453,13 +482,29 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 
 **Purpose:** Sends commands to external hardware (haptic feedback actuators in the physical VR cabin) via an HTTP API.
 
-**Script:** `src/server/SimulationController.server.lua` — `PhysicalActuatorBindable` handler
+**Scripts:**
+- `src/server/modules/ActuatorService.lua` — sends the HTTP request.
+- `src/server/modules/ActuatorConfig.lua` — stores `API_URL` and `API_KEY`.
+- `src/server/SimulationController.server.lua` — `PhysicalActuatorBindable` handler (routes external calls to `ActuatorService.fire()`).
+
+**Trigger:** `PhysicalActuatorBindable:Fire(player, actuatorName, value, duration, callback)`
+
+**Behavior:**
+- Constructs a JSON payload: `{ actuator, value, duration, player: userId, timestamp }`.
+- Posts to `{API_URL}/actuator` with a Bearer token authorization header using `HttpService:PostAsync`.
+- Uses `pcall` to catch network errors. On failure, logs a warning and calls `callback(false, "Error de conexion...")`.
+- On success, calls `callback(true, result)`.
+
+**Current usage in simulations:**
+- Fire Simulation: activates a heater actuator (`<locationName>_Heater`) after a configurable delay, for the duration of the fire.
+
+**Security note:** `ActuatorConfig.lua` contains placeholder values. Do not commit real credentials. Consider fetching from DataStore or a secure BindableFunction resolver for production use.
+
+**Interacts with:** Fire Simulation System (the only current caller). Designed to be called from any simulation via the BindableEvent interface.
 
 ---
 
 ## 17. Door System
-
-**System name:** Door System
 
 **Purpose:** Centralized management of all interactive doors.
 
@@ -485,15 +530,166 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 - Independent from simulation modules and scoring flow.
 - Uses the same existing `ToggleDoor` contract and does not modify client-side VR interaction logic.
 
-**Trigger:** `PhysicalActuatorBindable:Fire(player, actuatorName, value, duration, callback)`
+---
 
-**Behavior:**
-- Constructs a JSON payload: `{ actuator, value, duration, player: userId, timestamp }`.
-- Posts to `{API_URL}/actuator` with a Bearer token authorization header using `HttpService:PostAsync`.
-- Uses `pcall` to catch network errors. On failure, logs a warning and calls `callback(false, "Error de conexion...")`.
-- On success, calls `callback(true, result)`.
+## 18. Kiosk System
 
-**Current usage in simulations:**
-- Fire Simulation: activates a heater actuator (`<locationName>_Heater`) after a configurable delay, for the duration of the fire.
+**Purpose:** Physical in-world kiosk that guides a player through simulation mode, location, and difficulty selection before launching a simulation.
 
-**Interacts with:** Fire Simulation System (the only current caller). Designed to be called from any simulation via the BindableEvent interface.
+**Script:** `src/server/KioskController.server.lua`
+
+**Mechanism:**
+1. A player steps onto the `Hitbox` part near the kiosk. A "Start" button appears on the kiosk `SurfaceGui`.
+2. The player clicks Start — `startConfig()` coroutine begins:
+   - `ModeSelector` frame shown → player selects a simulation type button.
+   - `LocationSelector` frame shown → player selects a location button.
+   - `DiffSelector` frame shown → player selects a difficulty button.
+   - `confInfoFrame` is populated with display names from `KioskConfig` and shown on the kiosk surface.
+   - `KioskShowConfirmation:FireClient(player, { mode, location, diff })` is sent to the player.
+   - Controller waits for `KioskConfirm` or `KioskCancel` from the client.
+3. On confirm: fires `SimulationStartBindable:Fire(player, mode, location, diff)`.
+4. On cancel: resets UI, lets the player retry.
+5. On player leaving the hitbox or disconnecting: `resetKiosk()` clears all state and hides the `ConfirmationUI` on the player's screen.
+
+**State variables:** `currentPlayer`, `configInProgress`, `mode`, `diff`, `loc` — all reset to nil on every reset.
+
+**RemoteEvents created at startup (if not already present):** `KioskShowConfirmation`, `KioskConfirm`, `KioskCancel`.
+
+**Place file dependencies:**
+- `workspace.Menu` → Model containing `MenuScreen` (Part with `SurfaceGui`) and `Hitbox` (BasePart).
+- `SurfaceGui` children: `StartConfig`, `ModeSelector`, `LocationSelector`, `DiffSelector`, `BLK` (with `WaitingLabel` and `infoLabel`), `ConfirmationLabels`, `ConfirmationInfo` (with `modeLabel`, `diffLabel`, `locationLabel`).
+
+**Interacts with:** Confirmation UI System (fires `KioskShowConfirmation`), Simulation Controller (fires `SimulationStartBindable`), KioskConfig (display names).
+
+---
+
+## 19. Confirmation UI System
+
+**Purpose:** Shows a ScreenGui overlay on the player's screen summarising their kiosk selection (mode, location, difficulty, step objectives) and collecting their final confirm action.
+
+**Script:** `src/client/ConfirmationUIHandler.client.lua`
+
+**Mechanism:**
+- Listens to `KioskShowConfirmation` RemoteEvent. A non-nil payload triggers `showUI()`; nil triggers `hideUI()`.
+- `populate(mode)` reads `KioskConfig.getSteps(mode).stepNamesDetailed` and fills `Objective1`–`Objective4` labels.
+- Three UI elements (`Panel`, `Controles`, `btnConfirm`) animate in with a staggered Quint slide-up effect (0.05 s between each).
+- On hide, elements animate out in reverse order with a faster Quint slide-down effect.
+- A `transitionToken` integer prevents stale tween callbacks from interfering with rapid show/hide transitions.
+- On confirm button press: `hideUI()` + `KioskConfirm:FireServer()`.
+
+**UI dependencies:** `ConfirmationUI` ScreenGui (in StarterGui) with `Panel > Objectives > Objective1..4`, `Controles`, `Confirmar`.
+
+**RemoteEvent dependencies:** `KioskShowConfirmation` (S→C), `KioskConfirm` (C→S).
+
+**Shared module dependency:** `ReplicatedStorage.Shared.KioskConfig`.
+
+**Interacts with:** Kiosk System (server fires events), KioskConfig.
+
+---
+
+## 20. Results Screen System
+
+**Purpose:** Displays a detailed breakdown of simulation performance (rank, points, per-step times, precision, critical errors) after a simulation ends.
+
+**Scripts:**
+- `src/server/modules/ResultsSystem.lua` — computes and fires the payload.
+- `src/client/ResultsScreenHandler.client.lua` — receives and displays the payload.
+
+**Server side (`ResultsSystem`):**
+- `compute(session, simType, locationName, difficulty)` — builds a results payload table from session data:
+  - Per-step points using `stepPoints()` (1000/800/600/400/200 scale).
+  - Rank from total points ratio (S/A+/A/B+/B/C+/C/D).
+  - `precision` % = `totalBudget / totalUsed × 100`, clamped 0–100.
+  - `criticalErrors` = count of steps where time > 1.5× maxTime.
+  - `totalTime` formatted as `MM:SS`.
+- `show(player, session, simType, locationName, difficulty, mainLobbySpawn)` — calls `compute()` and fires `ShowResults:FireClient(player, payload)` after a 2-second delay.
+- Handles `ReturnToLobby:OnServerEvent` → teleports the player to `MainLobby`.
+
+**Client side (`ResultsScreenHandler`):**
+- Receives `ShowResults`. Validates payload is a table.
+- Populates: `LabelHeader`, `LabelRank` (with colour from rank), `RankContainer` image (green/yellow/red band), `LabelPoints`, `LabelTime`, `LabelPrecision`, `LabelErrors`, `LabelObjectives`.
+- Populates per-step rows (`Step1..4`) with name, time, and points.
+- Animates `Container` in from below with Quint tween; step rows fade in with a stagger (0.04 s each).
+- `BtnReturn` fires `ReturnToLobby:FireServer()` and hides the screen.
+
+**Rank band images:**
+| Band | Asset ID |
+|---|---|
+| GREEN | `rbxassetid://140721936487947` |
+| YELLOW | `rbxassetid://119407907574369` |
+| RED | `rbxassetid://88357135721128` |
+
+**UI dependencies:** `ResultsScreen` ScreenGui with `Container > LabelHeader`, `LabelRank`, `LabelPoints`, `LabelTime`, `LabelPrecision`, `LabelErrors`, `LabelObjectives`, `RankContainer`, `Steps/Step1..4 > LabelName/LabelTime/LabelPoints`, `BtnReturn`.
+
+**Interacts with:** ResultsSystem (server sends event), Simulation Controller (indirectly, via session data), KioskConfig (difficulty display name).
+
+---
+
+## 21. HUD Ticker (HUDService)
+
+**Purpose:** Pushes live simulation data (countdown timer, current score, objectives progress) to the player's HUD once per second during an active simulation.
+
+**Script:** `src/server/modules/HUDService.lua`
+
+**Mechanism:**
+- `startTicker(player, session, services)` — validates preconditions (player, session fields, services fields) and spawns a `task.spawn` loop.
+- Every second, computes:
+  - `timeLeft` — `SIMULATION_GLOBAL_TIMEOUT − elapsed`, floored to integer.
+  - `score` — calls `ScoringSystem.calculateScore(session.waypointTimes, session.maxTimes)`; returns 100 if no steps recorded yet.
+  - `completedSteps` — `#session.waypointTimes`.
+- Fires `services.hudUpdateEvent:FireClient(player, timeLeft, score, completedSteps, session.stepNames)`.
+- Loop exits when `timeLeft ≤ 0` or the player leaves.
+- `stopTicker(player)` — sets the ticker flag to nil, causing the loop to exit on its next iteration.
+
+**Session fields required:** `startTime`, `waypointTimes`, `maxTimes`, `stepNames`.
+
+**Services fields required:** `SIMULATION_GLOBAL_TIMEOUT`, `hudUpdateEvent`.
+
+**Interacts with:** HUD System (client receives `HUDUpdate`), ScoringSystem (calls `calculateScore`), Simulation Controller (holds the `services` table).
+
+---
+
+## 22. Kiosk Configuration (KioskConfig)
+
+**Purpose:** Single authoritative source of truth for all kiosk-driven simulation configuration, shared between server scripts and the client ConfirmationUI.
+
+**Script:** `src/shared/KioskConfig.lua` (available at `ReplicatedStorage.Shared.KioskConfig`)
+
+**Contents:**
+
+- **`MODES`** — array of mode entries:
+  ```
+  { name = "FireSimulation", display = "Simulacro de Incendio", description = "..." }
+  ```
+- **`DIFFICULTIES`** — array of difficulty entries:
+  ```
+  { name = "Easy", display = "Fácil", level = 1, description = "..." }
+  ```
+- **`SIMULATION_STEPS`** — keyed by simulation type name:
+  ```
+  FireSimulation = {
+    stepNames         = { "Deteccion", "Alarma", "Evacuacion", "Punto de encuentro" },
+    stepNamesDetailed = { "Localizar e identificar ...", ... },
+    maxTimes          = { 15, 10, 20, 15 },
+    description       = "4 pasos: ..."
+  }
+  ```
+
+**Step max times:**
+| Simulation | Step 1 | Step 2 | Step 3 | Step 4 |
+|---|---|---|---|---|
+| FireSimulation | 15 s | 10 s | 20 s | 15 s |
+| EarthquakeSimulation | 12 s | 18 s | 15 s | — |
+| ArmedGroupsSimulation | 10 s | 20 s | 15 s | 18 s |
+
+**Lookup helpers:**
+| Function | Returns |
+|---|---|
+| `getModeData(name)` | Full mode entry for a name key |
+| `getDifficultyData(name)` | Full difficulty entry for a name key |
+| `getDifficultyByLevel(level)` | Full difficulty entry for a numeric level |
+| `getSteps(simType)` | Steps table (safe: returns empty table if unknown) |
+| `getModeDisplay(name)` | Human-readable mode name (falls back to raw key) |
+| `getDifficultyDisplay(name)` | Human-readable difficulty name (falls back to raw key) |
+
+**Used by:** `KioskController` (display names), `ConfirmationUIHandler` (detailed step labels), `FireSimulation`, `EarthquakeSimulation`, `ArmedGroupsSimulation` (step names and max times).
