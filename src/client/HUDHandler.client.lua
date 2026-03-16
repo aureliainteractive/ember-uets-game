@@ -6,7 +6,6 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local HUDContainer = playerGui:WaitForChild("HUD_VR")
-local overlay = HUDContainer:WaitForChild("Overlay")
 
 local ControllerUI_HUD = ReplicatedStorage:WaitForChild("ControllerUI_HUD")
 local RunService = game:GetService("RunService")
@@ -14,8 +13,6 @@ local HUDUpdate  = ReplicatedStorage:WaitForChild("HUDUpdate")
 
 local CONFIG = {
 	AnimationDuration = 0.42,
-	OverlayVisibleTransparency = 0.44,
-	OverlayHiddenTransparency = 1
 }
 
 -- Referencias UI
@@ -135,13 +132,6 @@ local function showHUD()
 			})
 		end)
 	end
-
-	-- Overlay aparece
-	tweenUI(
-		overlay,
-		TWEEN_IN,
-		{ImageTransparency = CONFIG.OverlayVisibleTransparency}
-	)
 end
 
 -- Ocultar HUD
@@ -157,7 +147,6 @@ local function hideHUD(immediate)
 			ui.Position = HIDE_POSITIONS[ui]
 			ui.ImageTransparency = 1
 		end
-		overlay.ImageTransparency = CONFIG.OverlayHiddenTransparency
 		updateContainerEnabled()
 		return
 	end
@@ -173,13 +162,6 @@ local function hideHUD(immediate)
 			})
 		end)
 	end
-
-	-- Overlay desaparece
-	tweenUI(
-		overlay,
-		TWEEN_OUT,
-		{ImageTransparency = CONFIG.OverlayHiddenTransparency}
-	)
 
 	task.delay(TWEEN_OUT.Time + STAGGER_STEP * (#ANIMATION_ORDER - 1), function()
 		if token == hudTransitionToken and not isHUDVisible then
