@@ -56,19 +56,19 @@ function SlidingDoor.init(doorModel)
 		return false
 	end
 
-	local closedPosition = door.Position
-	local closedRotation = door.CFrame - door.Position
+	local closedCFrame = door.CFrame
 	local isOpen = false
 	local isAnimating = false
 	local onCooldown = false
 
 	local function targetCFrameForState(openState)
-		local targetPosition = closedPosition
+		local targetCFrame = closedCFrame
 		if openState then
-			targetPosition = closedPosition + (slidePivot.CFrame.LookVector * (slideDistance * slideDirection))
+			local offset = slidePivot.CFrame.RightVector * (slideDistance * slideDirection)
+			targetCFrame = closedCFrame + offset
 		end
 
-		return CFrame.new(targetPosition) * closedRotation
+		return targetCFrame
 	end
 
 	local function beginCooldown()
@@ -81,6 +81,10 @@ function SlidingDoor.init(doorModel)
 	toggleDoor.OnServerEvent:Connect(function()
 		if onCooldown or isAnimating then
 			return
+		end
+
+		if not isOpen then
+			closedCFrame = door.CFrame
 		end
 
 		isAnimating = true
