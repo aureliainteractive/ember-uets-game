@@ -71,16 +71,34 @@ ember-uets/
 ├── src/
 │   ├── client/                  # LocalScripts (run on each player's client)
 │   │   ├── CameraShakeHandler.client.lua
+│   │   ├── ConfirmationUIHandler.client.lua
 │   │   ├── DialogHandler.client.lua
 │   │   ├── HUDHandler.client.lua
 │   │   ├── LoadingContainerLoader.client.lua
+│   │   ├── ResultsScreenHandler.client.lua
 │   │   └── VRDoorInteractor.client.lua
 │   ├── server/                  # Scripts (run on the Roblox server only)
 │   │   ├── CycleController.server.lua
+│   │   ├── DoorSystem.server.lua
 │   │   ├── GlobalLightingController.server.lua
-│   │   └── SimulationController.server.lua
+│   │   ├── KioskController.server.lua
+│   │   ├── SimulationController.server.lua
+│   │   └── modules/             # ModuleScripts required by server scripts
+│   │       ├── ActuatorConfig.lua
+│   │       ├── ActuatorService.lua
+│   │       ├── ArmedGroupsSimulation.lua
+│   │       ├── DialogService.lua
+│   │       ├── EarthquakeSimulation.lua
+│   │       ├── FireSimulation.lua
+│   │       ├── HUDService.lua
+│   │       ├── NavigationUtils.lua
+│   │       ├── ResultsSystem.lua
+│   │       ├── ScoringSystem.lua
+│   │       └── doors/
+│   │           ├── HingeDoor.lua
+│   │           └── SlidingDoor.lua
 │   └── shared/                  # ModuleScripts (accessible by both sides)
-│       └── (no files currently tracked in this repo)
+│       └── KioskConfig.lua
 └── README.md
 ```
 
@@ -143,11 +161,14 @@ The following setup reflects the original development workflow, but complete rep
 This repository contains **only scripts**. The following assets are embedded inside the Roblox place file (`ember-uets.rbxlx`) and are **not tracked in this repository**:
 
 - 3D building models and maps
-- UI layouts and ScreenGui instances (`HUD_VR`, `LoadingContainer`)
+- UI layouts and ScreenGui instances (`HUD_VR`, `LoadingContainer`, `ConfirmationUI`, `ResultsScreen`)
 - Sound assets (fire alarm, earthquake alarm, explore music, radio beep)
 - NPC models (`Atacant NPC`, firefighter NPCs)
-- ReplicatedStorage instances (`CameraShakeEvent`, `ShowDialog`, `ControllerUI_HUD`, `SimulationStartBindable`, `HighlightTemplate`, etc.)
-- Workspace folder structure (`Waypoints`, `Refugees`, `Spawnpoints`, `AtacantsSpawns`, `FireWaypoints`)
+- ReplicatedStorage instances:
+  - RemoteEvents: `CameraShakeEvent`, `ShowDialog`, `ControllerUI_HUD`, `HUDUpdate`, `KioskShowConfirmation`, `KioskConfirm`, `KioskCancel`, `ShowResults`, `ReturnToLobby`
+  - BindableEvents: `SimulationStartBindable`, `HighlightPartBindable`, `FinishedTaskBindable`, `PhysicalActuatorBindable`
+  - Other: `HighlightTemplate`
+- Workspace folder and object structure (`Waypoints`, `Refugees`, `Spawnpoints`, `AtacantsSpawns`, `FireWaypoints`, `Menu`)
 
 Any developer cloning this repository will need access to the full Roblox place file to run the project.
 
