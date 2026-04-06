@@ -19,8 +19,6 @@ local Logo = loadingUI:WaitForChild("Logo")
 local InfoContainer = loadingUI:WaitForChild("InfoContainer")
 local InfoLabel = InfoContainer:WaitForChild("Info")
 local LoadingNowLabel = loadingUI:FindFirstChild("LoadingNow")
-	or InfoContainer:FindFirstChild("LoadingNow")
-	or loadingUI:WaitForChild("LoadingNow")
 
 local START_SCALE_X = 0.15
 local END_SCALE_X = 1
@@ -45,6 +43,7 @@ local UI_ITEMS = {
 	LoadingBar,
 	LoadingCircles,
 	InfoContainer,
+	InfoLabel,
 	LoadingNowLabel,
 }
 
