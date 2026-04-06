@@ -22,11 +22,49 @@ local MIN_VOLUME_FIRE = 0.05
 local SCAN_YIELD_EVERY = 2000
 local SMOKE_COLOR = Color3.fromRGB(117, 117, 117)
 
+-- ========================= PARTICLE CONFIG (EDIT HERE) =========================
+-- Folder path in ReplicatedStorage that contains your 2 presets.
+-- Example structure:
+-- ReplicatedStorage
+--   Particles
+--     Fire
+--       FireSmall (3 ParticleEmitters)
+--       FireLarge (4 ParticleEmitters)
+local PARTICLE_PRESETS_ROOT = { "Particles", "Fire" }
+
+-- Names of each preset object inside PARTICLE_PRESETS_ROOT.
+local PARTICLE_PRESET_SMALL_NAME = "FireSmall"
+local PARTICLE_PRESET_LARGE_NAME = "FireLarge"
+
+-- Your emitters should define an attribute to classify type:
+-- EffectType = "Fire"  or  EffectType = "Smoke"
+local PARTICLE_EFFECT_TYPE_ATTRIBUTE = "EffectType"
+
+-- Base relation requested:
+-- Fire rate = 10, Smoke rate = 40 (x4 over fire).
+local FIRE_BASE_RATE = 10
+local SMOKE_TO_FIRE_RATE_RATIO = 4
+
+-- Rate scaling based on computed fire size.
+local RATE_REFERENCE_FIRE_SIZE = 10
+local RATE_MIN_MULTIPLIER = 0.35
+local RATE_MAX_MULTIPLIER = 3.0
+
+-- Part volume threshold to pick small vs large preset.
+local LARGE_PART_MIN_VOLUME = 20
+
+-- Prefix used by runtime-generated ParticleEmitters for cleanup.
+local DYNAMIC_PARTICLE_PREFIX = "DynamicFX_"
+-- ======================= END PARTICLE CONFIG (EDIT HERE) =======================
+
 local FIREFIGHTERS_FOLDER = workspace:WaitForChild("FireWaypoints"):WaitForChild("Firefighters")
 local FIREFIGHTER_HIDDEN_OFFSET = Vector3.new(0, -100, 0)
 
 local firefightersData = {}
 local firefightersInitialized = false
+local particleRootCache
+local particleRootResolved = false
+local particlePresetWarnings = {}
 
 local FireSimulation = {}
 
@@ -88,9 +126,100 @@ function FireSimulation.smokeParams(part, difficulty)
 	return math.clamp(avg * sizeMult, 3, 25), rise
 end
 
+local function resolveParticleRoot()
+	if particleRootResolved then return particleRootCache end
+	particleRootResolved = true
+
+	local node = ReplicatedStorage
+	for _, childName in ipairs(PARTICLE_PRESETS_ROOT) do
+		node = node:FindFirstChild(childName)
+		if not node then
+			warn("[FireSimulation] Particle presets root not found. Check PARTICLE_PRESETS_ROOT.")
+			particleRootCache = nil
+			return nil
+		end
+	end
+
+	particleRootCache = node
+	return particleRootCache
+end
+
+local function getPresetForPart(part)
+	local root = resolveParticleRoot()
+	if not root then return nil end
+
+	local isLarge = FireSimulation.getVolume(part) >= LARGE_PART_MIN_VOLUME
+	local presetName = isLarge and PARTICLE_PRESET_LARGE_NAME or PARTICLE_PRESET_SMALL_NAME
+	local preset = root:FindFirstChild(presetName)
+
+	if not preset and not particlePresetWarnings[presetName] then
+		particlePresetWarnings[presetName] = true
+		warn(string.format("[FireSimulation] Particle preset '%s' not found under configured root.", presetName))
+	end
+
+	return preset
+end
+
+local function computeScaledRates(part, difficulty)
+	local fireSize = FireSimulation.fireSize(part, difficulty)
+	local multiplier = math.clamp(
+		fireSize / RATE_REFERENCE_FIRE_SIZE,
+		RATE_MIN_MULTIPLIER,
+		RATE_MAX_MULTIPLIER
+	)
+
+	local fireRate = FIRE_BASE_RATE * multiplier
+	local smokeRate = fireRate * SMOKE_TO_FIRE_RATE_RATIO
+	return fireRate, smokeRate
+end
+
+local function applyCustomParticles(part, difficulty)
+	local preset = getPresetForPart(part)
+	if not preset then return false end
+
+	local fireRate, smokeRate = computeScaledRates(part, difficulty)
+	local foundEmitterTemplate = false
+
+	for _, obj in ipairs(preset:GetDescendants()) do
+		if obj:IsA("ParticleEmitter") then
+			foundEmitterTemplate = true
+			local emitterName = DYNAMIC_PARTICLE_PREFIX .. obj.Name
+			local emitter = part:FindFirstChild(emitterName)
+			if not (emitter and emitter:IsA("ParticleEmitter")) then
+				emitter = obj:Clone()
+				emitter.Name = emitterName
+				emitter.Parent = part
+			end
+
+			emitter.Enabled = true
+			local effectType = string.lower(tostring(emitter:GetAttribute(PARTICLE_EFFECT_TYPE_ATTRIBUTE) or ""))
+			if effectType == "smoke" then
+				emitter.Rate = smokeRate
+			elseif effectType == "fire" then
+				emitter.Rate = fireRate
+			else
+				-- If no EffectType is defined, default to fire behavior.
+				emitter.Rate = fireRate
+			end
+		end
+	end
+
+	if not foundEmitterTemplate then
+		warn("[FireSimulation] Selected preset has no ParticleEmitters.")
+		return false
+	end
+
+	return true
+end
+
 -- Adds or updates fire and smoke effects on a part.
 function FireSimulation.ignite(part, difficulty)
 	if not part or not part.Parent then return end
+
+	-- Try custom particle presets first (small/large).
+	if applyCustomParticles(part, difficulty) then
+		return
+	end
 
 	local fire = part:FindFirstChildOfClass("Fire") or Instance.new("Fire")
 	fire.Name = "DynamicFire"
@@ -110,6 +239,12 @@ end
 -- Removes fire and smoke effects from a part.
 function FireSimulation.extinguish(part)
 	if not part or not part.Parent then return end
+	for _, obj in ipairs(part:GetChildren()) do
+		if obj:IsA("ParticleEmitter") and string.sub(obj.Name, 1, #DYNAMIC_PARTICLE_PREFIX) == DYNAMIC_PARTICLE_PREFIX then
+			obj.Enabled = false
+			obj:Destroy()
+		end
+	end
 	local fire = part:FindFirstChild("DynamicFire")
 	if fire then fire.Enabled = false; fire:Destroy() end
 	local smoke = part:FindFirstChild("DynamicSmoke")
