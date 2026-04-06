@@ -51,7 +51,7 @@ local RATE_MIN_MULTIPLIER = 0.35
 local RATE_MAX_MULTIPLIER = 3.0
 
 -- Part volume threshold to pick small vs large preset.
-local LARGE_PART_MIN_VOLUME = 20
+local LARGE_PART_MIN_VOLUME = 10
 
 -- Prefix used by runtime-generated ParticleEmitters for cleanup.
 local DYNAMIC_PARTICLE_PREFIX = "DynamicFX_"
