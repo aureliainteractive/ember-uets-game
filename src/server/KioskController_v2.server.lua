@@ -124,6 +124,7 @@ end
 local kioskShowConfirmationEvent = getOrCreate("KioskShowConfirmation")
 local kioskConfirmEvent          = getOrCreate("KioskConfirm")
 local kioskCancelEvent           = getOrCreate("KioskCancel")
+local simulationLoadingEvent     = getOrCreate("SimulationLoadingEvent")
 
 local selectionEvent = Instance.new("BindableEvent")
 
@@ -564,6 +565,12 @@ local function requestFinalConfirmation()
 		end
 
 		local playerSnapshot = currentPlayer
+        simulationLoadingEvent:FireClient(playerSnapshot, {
+            action = "Start",
+            mode = mode,
+            location = loc,
+            diff = diff,
+        })
 		SimulationStartBindable:Fire(playerSnapshot, mode, loc, diff)
 		print(string.format("[Kiosk v2] Simulación iniciada para %s", playerSnapshot.Name))
 		print(string.format("[Kiosk v2] Modo: %s, Ubicación: %s, Dificultad: %s", mode, loc, diff))
