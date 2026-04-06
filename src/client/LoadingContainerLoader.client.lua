@@ -35,7 +35,7 @@ task.wait(0.5)
 local gui = plyr.PlayerGui:WaitForChild("LoadingContainer")
 local logos = gui:WaitForChild("Logos")
 local blk = gui:WaitForChild("BLK")
-local title = blk:WaitForChild("title")
+local aureliaLogo = blk:WaitForChild("aureliaLogo")
 local subtitle = blk:WaitForChild("subtitle")
 
 --------------------------------------------------------------
@@ -43,11 +43,11 @@ local subtitle = blk:WaitForChild("subtitle")
 --------------------------------------------------------------
 gui.Enabled = true;
 logos.GroupTransparency = 1
-title.TextTransparency = 1
+aureliaLogo.ImageTransparency = 1
 subtitle.TextTransparency = 1
-local titleBasePos = title.Position
+local aureliaLogoBasePos = aureliaLogo.Position
 local subtitleBasePos = subtitle.Position
-title.Position = titleBasePos + UDim2.new(0, 0, 0.03, 0)
+aureliaLogo.Position = aureliaLogoBasePos + UDim2.new(0, 0, 0.03, 0)
 subtitle.Position = subtitleBasePos + UDim2.new(0, 0, 0.03, 0)
 
 --------------------------------------------------------------
@@ -55,9 +55,9 @@ subtitle.Position = subtitleBasePos + UDim2.new(0, 0, 0.03, 0)
 --------------------------------------------------------------
 
 -- [0.000 - 2.200] Textos entran
-local tIn1 = tweenAsync(title, 1.4, {
-	TextTransparency = 0,
-	Position = titleBasePos,
+local tIn1 = tweenAsync(aureliaLogo, 1.4, {
+	ImageTransparency = 0,
+	Position = aureliaLogoBasePos,
 })
 local tIn2 = tweenAsync(subtitle, 1.4, {
 	TextTransparency = 0,
@@ -69,9 +69,9 @@ tIn2.Completed:Wait()
 task.wait(0.7)
 
 -- [3.200 - 4.700] Textos salen
-local tOut1 = tweenAsync(title, 1.0, {
-	TextTransparency = 1,
-	Position = titleBasePos - UDim2.new(0, 0, 0.02, 0),
+local tOut1 = tweenAsync(aureliaLogo, 1.0, {
+	ImageTransparency = 1,
+	Position = aureliaLogoBasePos - UDim2.new(0, 0, 0.02, 0),
 })
 local tOut2 = tweenAsync(subtitle, 1.0, {
 	TextTransparency = 1,
