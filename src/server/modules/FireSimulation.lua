@@ -7,7 +7,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DialogService = require(script.Parent.DialogService)
 local NavigationUtils = require(script.Parent.NavigationUtils)
 local ActuatorService = require(script.Parent.ActuatorService)
-local ScoringSystem = require(script.Parent.ScoringSystem)
 local ResultsSystem = require(script.Parent.ResultsSystem)
 local KioskConfig   = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 

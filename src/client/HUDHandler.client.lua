@@ -8,7 +8,6 @@ local playerGui = player:WaitForChild("PlayerGui")
 local HUDContainer = playerGui:WaitForChild("HUD_VR")
 
 local ControllerUI_HUD = ReplicatedStorage:WaitForChild("ControllerUI_HUD")
-local RunService = game:GetService("RunService")
 local HUDUpdate  = ReplicatedStorage:WaitForChild("HUDUpdate")
 
 local CONFIG = {
