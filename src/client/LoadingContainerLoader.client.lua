@@ -38,11 +38,22 @@ local blk = gui:WaitForChild("BLK")
 local aureliaLogo = blk:WaitForChild("aureliaLogo")
 local subtitle = blk:WaitForChild("subtitle")
 
+-- Elementos dentro de Logos para animaciones separadas
+local mainLogos = logos:WaitForChild("MainLogos")
+local brandLogos = logos:WaitForChild("BrandLogos")
+local credits = logos:WaitForChild("Credits")
+
 --------------------------------------------------------------
 -- ESTADO INICIAL
 --------------------------------------------------------------
 gui.Enabled = true;
-logos.GroupTransparency = 1
+
+-- Elementos de Logos inicialmente invisibles
+mainLogos.Transparency = 1
+brandLogos.Transparency = 1
+credits.TextTransparency = 1
+
+-- Logo Aurelia y subtitle inicialmente invisibles
 aureliaLogo.ImageTransparency = 1
 subtitle.TextTransparency = 1
 local aureliaLogoBasePos = aureliaLogo.Position
@@ -51,41 +62,65 @@ aureliaLogo.Position = aureliaLogoBasePos + UDim2.new(0, 0, 0.03, 0)
 subtitle.Position = subtitleBasePos + UDim2.new(0, 0, 0.03, 0)
 
 --------------------------------------------------------------
--- SECUENCIA SINCRONIZADA
+-- SECUENCIA DE ANIMACIÓN MEJORADA
 --------------------------------------------------------------
 
--- [0.000 - 2.200] Textos entran
-local tIn1 = tweenAsync(aureliaLogo, 1.4, {
+-- [0.000 - 1.400] Logo Aurelia fade-in
+local tAureliaIn = tweenAsync(aureliaLogo, 1.4, {
 	ImageTransparency = 0,
 	Position = aureliaLogoBasePos,
 })
-local tIn2 = tweenAsync(subtitle, 1.4, {
+tAureliaIn.Completed:Wait()
+
+-- [1.400 - 2.800] Subtitle entra después del logo (con delay)
+local tSubtitleIn = tweenAsync(subtitle, 1.0, {
 	TextTransparency = 0,
 	Position = subtitleBasePos,
 })
-tIn2.Completed:Wait()
+tSubtitleIn.Completed:Wait()
 
--- [2.200 - 3.200] Pausa
+-- [2.800 - 3.500] Pausa
 task.wait(0.7)
 
--- [3.200 - 4.700] Textos salen
-local tOut1 = tweenAsync(aureliaLogo, 1.0, {
+-- [3.500 - 4.500] Textos salen
+local tAureliaOut = tweenAsync(aureliaLogo, 1.0, {
 	ImageTransparency = 1,
 	Position = aureliaLogoBasePos - UDim2.new(0, 0, 0.02, 0),
 })
-local tOut2 = tweenAsync(subtitle, 1.0, {
+local tSubtitleOut = tweenAsync(subtitle, 1.0, {
 	TextTransparency = 1,
 	Position = subtitleBasePos - UDim2.new(0, 0, 0.02, 0),
 })
-tOut2.Completed:Wait()
+tSubtitleOut.Completed:Wait()
 
--- [4.700 - 8.200] Logos fade-in (3.5 s)
-tweenWait(logos, 2.4, {GroupTransparency = 0})
+-- [4.500 - 11.000] Logos entran por separado
+-- MainLogos entra primero
+local tMainIn = tweenAsync(mainLogos, 2.0, {Transparency = 0})
+tMainIn.Completed:Wait()
 
--- [8.200 - 11.200] Logos fade-out (3 s)
-tweenWait(logos, 2.0, {GroupTransparency = 1})
+-- BrandLogos entra con un pequeño delay
+task.wait(0.3)
+local tBrandIn = tweenAsync(brandLogos, 1.5, {Transparency = 0})
 
--- [11.200 - 12.095] Fade a negro
+-- Credits entra en paralelo con BrandLogos
+local tCreditsIn = tweenAsync(credits, 1.5, {TextTransparency = 0})
+tCreditsIn.Completed:Wait()
+
+-- [11.000 - 12.095] Logos salen por separado (en orden inverso)
+task.wait(0.5)
+
+-- MainLogos sale primero
+local tMainOut = tweenAsync(mainLogos, 1.2, {Transparency = 1})
+
+-- BrandLogos y Credits salen juntos
+local tBrandOut = tweenAsync(brandLogos, 1.0, {Transparency = 1})
+local tCreditsOut = tweenAsync(credits, 1.0, {TextTransparency = 1})
+tCreditsOut.Completed:Wait()
+
+-- Esperar a que MainLogos termine
+tMainOut.Completed:Wait()
+
+-- [12.095 - 12.895] Fade a negro
 tweenWait(blk, 0.8, {BackgroundTransparency = 1})
 
 gui.Enabled = false
