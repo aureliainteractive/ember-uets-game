@@ -13,6 +13,7 @@ local RNG = Random.new()
 
 local MIN_VOLUME_QUAKE = 0.15
 local SCAN_YIELD_EVERY = 2000
+local MIN_STRUCTURAL_VOLUME = 1.2
 
 local PILLAR_COLOR = Color3.fromRGB(181, 125, 93)
 local STUCCO_TILE_SIZE = Vector3.new(3.288, 0.038, 3.288)
@@ -45,6 +46,14 @@ local function isValidPart(obj)
 	return true
 end
 
+local function isStructuralCandidate(part)
+	if not isValidPart(part) then return false end
+	if not part.Anchored then return false end
+	if getVolume(part) < MIN_STRUCTURAL_VOLUME then return false end
+	if part.Name:match("^Waypoint") or part.Name:match("^Refuge") then return false end
+	return true
+end
+
 local function getBuildingModel(locationName)
 	local building = workspace:FindFirstChild(locationName)
 	if not building then
@@ -55,7 +64,8 @@ end
 
 -- Collects candidate earthquake objects from a building.
 function EarthquakeSimulation.collectEarthquakeCandidates(building)
-	local tiles, tvs, pillars, lightModels = {}, {}, {}, {}
+	local tiles, tvs, pillars, lightModels, structural = {}, {}, {}, {}, {}
+	local excludedFromStructural = {}
 	local count = 0
 	for _, obj in ipairs(building:GetDescendants()) do
 		count += 1
@@ -69,14 +79,27 @@ function EarthquakeSimulation.collectEarthquakeCandidates(building)
 		if isValidPart(obj) and getVolume(obj) >= MIN_VOLUME_QUAKE then
 			if obj:IsA("UnionOperation") and approxVec3(obj.Size, STUCCO_TILE_SIZE, SIZE_EPSILON) then
 				table.insert(tiles, obj)
+				excludedFromStructural[obj] = true
 			elseif approxVec3(obj.Size, TV_SIZE, SIZE_EPSILON) then
 				table.insert(tvs, obj)
+				excludedFromStructural[obj] = true
 			elseif obj.Color == PILLAR_COLOR then
 				table.insert(pillars, obj)
+				excludedFromStructural[obj] = true
 			end
 		end
+
+		if obj:IsA("BasePart") and isStructuralCandidate(obj) and not excludedFromStructural[obj] then
+			table.insert(structural, obj)
+		end
 	end
-	return { tiles = tiles, tvs = tvs, pillars = pillars, lightModels = lightModels }
+	return {
+		tiles = tiles,
+		tvs = tvs,
+		pillars = pillars,
+		lightModels = lightModels,
+		structural = structural,
+	}
 end
 
 -- Gets representative part from a model.
@@ -119,12 +142,29 @@ end
 function EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
 	local c = EarthquakeSimulation.collectEarthquakeCandidates(building)
 
-	local tilesToDrop = (difficulty == 1 and 320) or (difficulty == 2 and 420) or 560
-	local tvsToDrop = (difficulty == 1 and 10) or (difficulty == 2 and 18) or 28
-	local pillarsToDrop = (difficulty == 1 and 12) or (difficulty == 2 and 22) or 35
-	local lightsToDrop = (difficulty == 1 and 58) or (difficulty == 2 and 80) or 105
+	local tilesToDrop = (difficulty == 1 and 420) or (difficulty == 2 and 600) or 820
+	local tvsToDrop = (difficulty == 1 and 14) or (difficulty == 2 and 24) or 36
+	local pillarsToDrop = (difficulty == 1 and 18) or (difficulty == 2 and 30) or 48
+	local lightsToDrop = (difficulty == 1 and 72) or (difficulty == 2 and 108) or 140
+	local cascadeBudget = (difficulty == 1 and 130) or (difficulty == 2 and 240) or 360
+	local cascadePerPillar = (difficulty == 1 and 8) or (difficulty == 2 and 12) or 16
+	local cascadeRadius = (difficulty == 1 and 14) or (difficulty == 2 and 20) or 26
 
 	local originals = {}
+	local dropped = {}
+
+	local function rememberState(state)
+		if not state then return end
+		if dropped[state.part] then return end
+		dropped[state.part] = true
+		table.insert(originals, state)
+	end
+
+	local function desiredCount(list, minimum, ratio)
+		if #list == 0 then return 0 end
+		local scaled = math.floor(#list * ratio)
+		return math.min(#list, math.max(minimum, scaled))
+	end
 
 	local function pickRandom(list, amount)
 		local picked = {}
@@ -143,19 +183,54 @@ function EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
 	local function kick(list, amount)
 		for _, obj in ipairs(pickRandom(list, amount)) do
 			local state = EarthquakeSimulation.unanchorAndKick(obj, difficulty)
-			if state then table.insert(originals, state) end
+			rememberState(state)
 		end
 	end
 
-	kick(c.tiles, tilesToDrop)
-	kick(c.tvs, tvsToDrop)
-	kick(c.pillars, pillarsToDrop)
+	local function collapseAdjacentAround(part, amount, radius)
+		if amount <= 0 or radius <= 0 then return 0 end
+		local nearby = {}
+		for _, candidate in ipairs(c.structural) do
+			if not dropped[candidate] and candidate.Parent and candidate.Anchored then
+				if (candidate.Position - part.Position).Magnitude <= radius then
+					table.insert(nearby, candidate)
+				end
+			end
+		end
 
-	for _, m in ipairs(pickRandom(c.lightModels, lightsToDrop)) do
+		local collapsed = 0
+		for _, candidate in ipairs(pickRandom(nearby, amount)) do
+			local state = EarthquakeSimulation.unanchorAndKick(candidate, difficulty)
+			if state and not dropped[state.part] then
+				rememberState(state)
+				collapsed += 1
+			end
+		end
+		return collapsed
+	end
+
+	kick(c.tiles, desiredCount(c.tiles, tilesToDrop, 0.8))
+	kick(c.tvs, desiredCount(c.tvs, tvsToDrop, 0.9))
+
+	local droppedPillars = pickRandom(c.pillars, desiredCount(c.pillars, pillarsToDrop, 0.85))
+	for _, pillar in ipairs(droppedPillars) do
+		local state = EarthquakeSimulation.unanchorAndKick(pillar, difficulty)
+		rememberState(state)
+		if cascadeBudget > 0 then
+			local collapsed = collapseAdjacentAround(pillar, cascadePerPillar, cascadeRadius)
+			cascadeBudget -= collapsed
+		end
+	end
+
+	if cascadeBudget > 0 then
+		kick(c.structural, math.min(cascadeBudget, desiredCount(c.structural, 0, 0.2)))
+	end
+
+	for _, m in ipairs(pickRandom(c.lightModels, desiredCount(c.lightModels, lightsToDrop, 0.8))) do
 		local p = EarthquakeSimulation.getRepresentativePart(m)
 		if p then
 			local state = EarthquakeSimulation.unanchorAndKick(p, difficulty)
-			if state then table.insert(originals, state) end
+			rememberState(state)
 		end
 	end
 
