@@ -37,6 +37,13 @@ local function getVolume(part)
 	return s.X * s.Y * s.Z
 end
 
+local function sortByVolumeDesc(parts)
+	table.sort(parts, function(a, b)
+		return getVolume(a) > getVolume(b)
+	end)
+	return parts
+end
+
 local function isValidPart(obj)
 	if not obj or not obj:IsA("BasePart") then return false end
 	if not obj.Parent then return false end
@@ -142,7 +149,7 @@ end
 function EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
 	local c = EarthquakeSimulation.collectEarthquakeCandidates(building)
 
-	local tilesToDrop = (difficulty == 1 and 420) or (difficulty == 2 and 600) or 820
+	local tilesToDrop = (difficulty == 1 and 24) or (difficulty == 2 and 32) or 40
 	local tvsToDrop = (difficulty == 1 and 14) or (difficulty == 2 and 24) or 36
 	local pillarsToDrop = (difficulty == 1 and 18) or (difficulty == 2 and 30) or 48
 	local lightsToDrop = (difficulty == 1 and 72) or (difficulty == 2 and 108) or 140
@@ -180,8 +187,22 @@ function EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
 		return picked
 	end
 
-	local function kick(list, amount)
-		for _, obj in ipairs(pickRandom(list, amount)) do
+	local function pickLargestRandom(list, amount, poolRatio)
+		if #list == 0 or amount <= 0 then return {} end
+		local sorted = table.clone(list)
+		sortByVolumeDesc(sorted)
+		local poolSize = math.max(amount, math.floor(#sorted * (poolRatio or 0.35)))
+		poolSize = math.min(poolSize, #sorted)
+		local pool = {}
+		for i = 1, poolSize do
+			table.insert(pool, sorted[i])
+		end
+		return pickRandom(pool, amount)
+	end
+
+	local function kick(list, amount, preferLarge)
+		local picked = preferLarge and pickLargestRandom(list, amount, 0.4) or pickRandom(list, amount)
+		for _, obj in ipairs(picked) do
 			local state = EarthquakeSimulation.unanchorAndKick(obj, difficulty)
 			rememberState(state)
 		end
@@ -197,9 +218,10 @@ function EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
 				end
 			end
 		end
+		sortByVolumeDesc(nearby)
 
 		local collapsed = 0
-		for _, candidate in ipairs(pickRandom(nearby, amount)) do
+		for _, candidate in ipairs(pickLargestRandom(nearby, amount, 0.5)) do
 			local state = EarthquakeSimulation.unanchorAndKick(candidate, difficulty)
 			if state and not dropped[state.part] then
 				rememberState(state)
@@ -209,10 +231,10 @@ function EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
 		return collapsed
 	end
 
-	kick(c.tiles, desiredCount(c.tiles, tilesToDrop, 0.8))
-	kick(c.tvs, desiredCount(c.tvs, tvsToDrop, 0.9))
+	kick(c.tiles, desiredCount(c.tiles, tilesToDrop, 0.15), false)
+	kick(c.tvs, desiredCount(c.tvs, tvsToDrop, 0.9), true)
 
-	local droppedPillars = pickRandom(c.pillars, desiredCount(c.pillars, pillarsToDrop, 0.85))
+	local droppedPillars = pickLargestRandom(c.pillars, desiredCount(c.pillars, pillarsToDrop, 0.9), 0.5)
 	for _, pillar in ipairs(droppedPillars) do
 		local state = EarthquakeSimulation.unanchorAndKick(pillar, difficulty)
 		rememberState(state)
@@ -223,7 +245,7 @@ function EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
 	end
 
 	if cascadeBudget > 0 then
-		kick(c.structural, math.min(cascadeBudget, desiredCount(c.structural, 0, 0.2)))
+		kick(c.structural, math.min(cascadeBudget, desiredCount(c.structural, 0, 0.2)), true)
 	end
 
 	for _, m in ipairs(pickRandom(c.lightModels, desiredCount(c.lightModels, lightsToDrop, 0.8))) do
