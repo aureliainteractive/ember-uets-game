@@ -5,6 +5,27 @@
 local TweenService = game:GetService("TweenService")
 
 local SlidingDoor = {}
+local CLICK_DISTANCE = 12
+
+local function bindHandleClickDetector(doorModel, handleName, onToggle)
+	local handle = doorModel:FindFirstChild(handleName, true)
+	if not handle or not handle:IsA("BasePart") then
+		warn("[SlidingDoor] Missing " .. handleName .. " BasePart on " .. doorModel:GetFullName())
+		return
+	end
+
+	local clickDetector = handle:FindFirstChildOfClass("ClickDetector")
+	if not clickDetector then
+		clickDetector = Instance.new("ClickDetector")
+		clickDetector.Name = "DoorClickDetector"
+		clickDetector.MaxActivationDistance = CLICK_DISTANCE
+		clickDetector.Parent = handle
+	end
+
+	clickDetector.MouseClick:Connect(function()
+		onToggle()
+	end)
+end
 
 function SlidingDoor.init(doorModel)
 	if not doorModel or not doorModel:IsA("Model") then
@@ -78,7 +99,7 @@ function SlidingDoor.init(doorModel)
 		end)
 	end
 
-	toggleDoor.OnServerEvent:Connect(function()
+	local function tryToggleDoor()
 		if onCooldown or isAnimating then
 			return
 		end
@@ -103,7 +124,14 @@ function SlidingDoor.init(doorModel)
 		isOpen = nextOpenState
 		isAnimating = false
 		beginCooldown()
+	end
+
+	toggleDoor.OnServerEvent:Connect(function()
+		tryToggleDoor()
 	end)
+
+	bindHandleClickDetector(doorModel, "HandleInside", tryToggleDoor)
+	bindHandleClickDetector(doorModel, "HandleOutside", tryToggleDoor)
 
 	return true
 end
