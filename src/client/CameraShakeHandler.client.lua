@@ -11,6 +11,30 @@ local CameraShakeEvent = ReplicatedStorage:WaitForChild("CameraShakeEvent")
 
 local shaking = false
 local shakeConnection = nil
+local activeHumanoid = nil
+
+local function getHumanoid()
+	local character = player.Character
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChildOfClass("Humanoid")
+end
+
+local function stopShake()
+	if shakeConnection then
+		shakeConnection:Disconnect()
+		shakeConnection = nil
+	end
+
+	if activeHumanoid then
+		activeHumanoid.CameraOffset = Vector3.zero
+		activeHumanoid = nil
+	end
+
+	shaking = false
+end
 
 -- Detectar si está en VR
 local function isVR()
@@ -47,9 +71,7 @@ local function shakeNormal(duration, intensity)
 		local elapsed = tick() - startTime
 
 		if elapsed >= duration then
-			shakeConnection:Disconnect()
-			shakeConnection = nil
-			shaking = false
+			stopShake()
 			return
 		end
 
@@ -68,14 +90,14 @@ local function shakeNormal(duration, intensity)
 			math.cos(time * 2.4) +
 			math.sin(time * 3.1) * 0.5
 
-		local noiseY = wave * (math.random() * 0.3 + 0.85)
+		local noiseX = wave * (math.random() * 0.3 + 0.85)
 
-		local shakeY = noiseY * currentIntensity * 0.6
-		local shakeRotX = math.rad(noiseY * currentIntensity * 0.8)
+		local shakeX = noiseX * currentIntensity * 0.6
+		local shakeRotY = math.rad(noiseX * currentIntensity * 0.8)
 
 		if camera.CameraType == Enum.CameraType.Custom then
-			camera.CFrame *= CFrame.new(0, shakeY, 0)
-			camera.CFrame *= CFrame.Angles(shakeRotX, 0, 0)
+			camera.CFrame *= CFrame.new(shakeX, 0, 0)
+			camera.CFrame *= CFrame.Angles(0, shakeRotY, 0)
 		end
 	end)
 end
@@ -89,11 +111,14 @@ end
 local function shakeVR(duration, intensity)
 
 	if shaking then return end
-	shaking = true
+	local humanoid = getHumanoid()
+	if not humanoid then
+		return
+	end
 
+	shaking = true
 	local startTime = tick()
-	local humanoid = player.Character and player.Character:FindFirstChild("Humanoid")
-	if not humanoid then return end
+	activeHumanoid = humanoid
 
 	if shakeConnection then
 		shakeConnection:Disconnect()
@@ -101,14 +126,16 @@ local function shakeVR(duration, intensity)
 
 	shakeConnection = RunService.RenderStepped:Connect(function()
 		local elapsed = tick() - startTime
+		local currentHumanoid = getHumanoid()
+		if not currentHumanoid then
+			stopShake()
+			return
+		end
+
+		activeHumanoid = currentHumanoid
 
 		if elapsed >= duration then
-			shakeConnection:Disconnect()
-			shakeConnection = nil
-			shaking = false
-
-			-- Reset offset
-			humanoid.CameraOffset = Vector3.zero
+			stopShake()
 			return
 		end
 
@@ -118,11 +145,11 @@ local function shakeVR(duration, intensity)
 		local time = elapsed * 8
 
 		-- Movimiento MUY sutil para VR
-		local offsetY = math.sin(time * 2) * currentIntensity * 0.08
-		local offsetX = math.cos(time * 1.5) * currentIntensity * 0.05
+		local offsetX = math.sin(time * 2) * currentIntensity * 0.05
+		local offsetZ = math.cos(time * 1.5) * currentIntensity * 0.025
 
 		-- Aplicar offset compatible con frameworks tipo NexusVR
-		humanoid.CameraOffset = Vector3.new(offsetX, offsetY, 0)
+		currentHumanoid.CameraOffset = Vector3.new(offsetX, 0, offsetZ)
 	end)
 end
 
@@ -131,7 +158,8 @@ end
 -- ================================
 CameraShakeEvent.OnClientEvent:Connect(function(duration, scale)
 
-	if not duration or not scale then return end
+	if typeof(duration) ~= "number" or typeof(scale) ~= "number" then return end
+	if duration <= 0 or scale <= 0 then return end
 
 	local intensity = scale * 0.35
 
@@ -145,9 +173,5 @@ end)
 
 -- Limpieza
 player.CharacterAdded:Connect(function()
-	if shakeConnection then
-		shakeConnection:Disconnect()
-		shakeConnection = nil
-	end
-	shaking = false
+	stopShake()
 end)
