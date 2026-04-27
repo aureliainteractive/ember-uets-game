@@ -45,10 +45,8 @@ end
 -- In all other cases (no script, or LocalScript), we take over here.
 
 local function setupWalkAnimation()
-	print("Setting up walk animation...")
 	local animateScript = npcModel:FindFirstChild("Animate")
 	if animateScript and animateScript:IsA("Script") and animateScript.Enabled then
-		print("Server-side Animate Script is already handling this NPC.")
 		return nil
 	end
 
@@ -56,18 +54,15 @@ local function setupWalkAnimation()
 	if not animator then
 		animator = Instance.new("Animator")
 		animator.Parent = humanoid
-		print("Created new Animator object.")
 	end
 
 	local animId = (humanoid.RigType == Enum.HumanoidRigType.R15) and WALK_ANIM_R15 or WALK_ANIM_R6
-	print("Using animation ID:", animId)
 
 	local animation = Instance.new("Animation")
 	animation.AnimationId = animId
 
 	local walkTrack = animator:LoadAnimation(animation)
 	animation:Destroy()
-	print("Loaded walk animation track.")
 
 	walkTrack.Looped = true
 	walkTrack.Priority = Enum.AnimationPriority.Movement
@@ -84,16 +79,13 @@ local function setupWalkAnimation()
 			local horizontalSpeed = math.sqrt((velocity.X * velocity.X) + (velocity.Z * velocity.Z))
 			local movingThreshold = math.max(WALK_SPEED_THRESHOLD, humanoid.WalkSpeed * 0.25)
 			local moving = horizontalSpeed >= movingThreshold
-			print("NPC is moving:", moving)
 
 			if moving then
 				if not walkTrack.IsPlaying then
-					print("Playing walk animation...")
 					walkTrack:Play(0.15)
 				end
 			else
 				if walkTrack.IsPlaying then
-					print("Stopping walk animation...")
 					walkTrack:Stop(0.15)
 				end
 			end
@@ -104,7 +96,6 @@ local function setupWalkAnimation()
 
 	humanoid.Died:Connect(function()
 		if walkTrack.IsPlaying then
-			print("Stopping walk animation due to NPC death...")
 			walkTrack:Stop(0.1)
 		end
 	end)
@@ -249,7 +240,6 @@ end
 -- ─── Runner ───────────────────────────────────────────────────────────────────
 
 local function run()
-	print("Starting NPC movement...")
 	local buildingName = npcModel:GetAttribute("BuildingName")
 	local eventType = npcModel:GetAttribute("EventType")
 	local startDelay = npcModel:GetAttribute("StartDelay") or 0
@@ -263,30 +253,24 @@ local function run()
 	local offset = rawOffset or Vector3.zero
 
 	if startDelay > 0 then
-		print("Waiting for start delay...")
 		task.wait(startDelay)
 	end
 
 	local waypoints = collectWaypoints(buildingName, eventType)
-	print("Collected waypoints:", #waypoints)
 
 	if #waypoints == 0 then
-		print("No waypoints found.")
 		return
 	end
 
 	for _, entry in ipairs(waypoints) do
 		if not npcModel.Parent then
-			print("NPC model is no longer parented.")
 			return
 		end
 		if humanoid.Health <= 0 then
-			print("NPC has died.")
 			return
 		end
 
 		local wp = entry.part
-		print("Moving to waypoint:", wp.Name)
 
 		local wpType = wp:GetAttribute("WaypointType") or "Transit"
 
@@ -296,7 +280,6 @@ local function run()
 			handleHold(wp, offset)
 		elseif wpType == "Finish" then
 			if handleFinish(wp, offset) == false then
-				print("Reached finish waypoint.")
 				return
 			end
 		else
