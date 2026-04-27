@@ -14,23 +14,23 @@
 
 -- ─── Constants ────────────────────────────────────────────────────────────────
 
-local ARRIVE_RADIUS  = 2.5   -- studs: "close enough" to a waypoint node
-local MOVETO_TIMEOUT = 12    -- seconds before giving up on a waypoint and skipping
-local TICK_RATE      = 0.1   -- seconds between movement checks
+local ARRIVE_RADIUS = 2.5 -- studs: "close enough" to a waypoint node
+local MOVETO_TIMEOUT = 12 -- seconds before giving up on a waypoint and skipping
+local TICK_RATE = 0.1 -- seconds between movement checks
 
 -- Walk animation IDs (public Roblox default animations — no ownership required)
-local WALK_ANIM_R6  = "rbxassetid://180426354"
+local WALK_ANIM_R6 = "rbxassetid://180426354"
 local WALK_ANIM_R15 = "rbxassetid://507777826"
 
 local WALK_SPEED_THRESHOLD = 0.1
-local START_EVENT_NAME     = "StartPathing"
+local START_EVENT_NAME = "StartPathing"
 
 -- ─── Bootstrap ────────────────────────────────────────────────────────────────
 
 local npcModel = script.Parent
 local humanoid = npcModel:FindFirstChildOfClass("Humanoid")
 local rootPart = npcModel:FindFirstChild("HumanoidRootPart")
-local started  = false
+local started = false
 
 if not humanoid or not rootPart then
 	warn("[NPCWaypointFollower] Missing Humanoid or HumanoidRootPart in: " .. npcModel.Name)
@@ -45,55 +45,62 @@ end
 -- In all other cases (no script, or LocalScript), we take over here.
 
 local function setupWalkAnimation()
+	print("Setting up walk animation...")
 	local animateScript = npcModel:FindFirstChild("Animate")
 	if animateScript and animateScript:IsA("Script") and animateScript.Enabled then
-		-- A server-side Animate Script is already handling this NPC.
+		print("Server-side Animate Script is already handling this NPC.")
 		return nil
 	end
 
-	-- Per Roblox docs: WaitForChild ensures the Animator exists before we touch it.
-	-- Humanoid creates Animator automatically, but timing on clone isn't guaranteed.
-	local animator = humanoid:FindFirstChildOfClass("Animator")
+	local animator = humanoid:WaitForChild("Animator")
 	if not animator then
 		animator = Instance.new("Animator")
 		animator.Parent = humanoid
+		print("Created new Animator object.")
 	end
 
-	-- Build the Animation instance (does not need a Parent — LoadAnimation only
-	-- reads the AnimationId property, per Roblox API docs).
-	local animId = (humanoid.RigType == Enum.HumanoidRigType.R15)
-		and WALK_ANIM_R15
-		or  WALK_ANIM_R6
+	local animId = (humanoid.RigType == Enum.HumanoidRigType.R15) and WALK_ANIM_R15 or WALK_ANIM_R6
+	print("Using animation ID:", animId)
 
-	local animation    = Instance.new("Animation")
+	local animation = Instance.new("Animation")
 	animation.AnimationId = animId
 
-	-- LoadAnimation can legitimately fail (bad asset ID, studio permission, etc.).
-	-- Log the real error so it's diagnosable instead of swallowing it with pcall.
 	local walkTrack = animator:LoadAnimation(animation)
-	animation:Destroy() -- no longer needed after track is created
+	animation:Destroy()
+	print("Loaded walk animation track.")
 
-	walkTrack.Looped    = true
-	walkTrack.Priority  = Enum.AnimationPriority.Movement
+	walkTrack.Looped = true
+	walkTrack.Priority = Enum.AnimationPriority.Movement
 
-	-- Humanoid.Running fires on the server whenever the humanoid's speed changes.
-	-- speed > threshold  → NPC is moving  → play walk loop
-	-- speed ≤ threshold  → NPC is stopped → stop walk loop
-	humanoid.Running:Connect(function(speed)
-		if humanoid.Health <= 0 then return end
-		if speed > WALK_SPEED_THRESHOLD then
-			if not walkTrack.IsPlaying then
-				walkTrack:Play(0.15)
+	task.spawn(function()
+		while humanoid and humanoid.Parent do
+			if humanoid.Health <= 0 then
+				break
 			end
-		else
-			if walkTrack.IsPlaying then
-				walkTrack:Stop(0.15)
+
+			-- MoveDirection is unreliable on the server for NPCs; use WalkSpeed instead.
+			local moving = humanoid.WalkSpeed > WALK_SPEED_THRESHOLD
+			print("NPC is moving:", moving)
+
+			if moving then
+				if not walkTrack.IsPlaying then
+					print("Playing walk animation...")
+					walkTrack:Play(0.15)
+				end
+			else
+				if walkTrack.IsPlaying then
+					print("Stopping walk animation...")
+					walkTrack:Stop(0.15)
+				end
 			end
+
+			task.wait(0.1)
 		end
 	end)
 
 	humanoid.Died:Connect(function()
 		if walkTrack.IsPlaying then
+			print("Stopping walk animation due to NPC death...")
 			walkTrack:Stop(0.1)
 		end
 	end)
@@ -105,7 +112,9 @@ end
 
 local function resolveWaypointsRoot()
 	local preferred = workspace:FindFirstChild("NPC_Waypoints")
-	if preferred then return preferred end
+	if preferred then
+		return preferred
+	end
 
 	local legacy = workspace:FindFirstChild("Waypoints")
 	if legacy then
@@ -123,7 +132,9 @@ end
 
 local function collectWaypoints(buildingName, eventType)
 	local root = resolveWaypointsRoot()
-	if not root then return {} end
+	if not root then
+		return {}
+	end
 
 	local buildingFolder = root:FindFirstChild(buildingName)
 	if not buildingFolder then
@@ -147,13 +158,18 @@ local function collectWaypoints(buildingName, eventType)
 		end
 	end
 
-	table.sort(list, function(a, b) return a.index < b.index end)
+	table.sort(list, function(a, b)
+		return a.index < b.index
+	end)
 
 	if #list == 0 then
-		warn(string.format(
-			"[NPCWaypointFollower] No waypoint parts found in '%s/%s'. Expected names like Waypoint1, Waypoint2...",
-			buildingName, eventType
-		))
+		warn(
+			string.format(
+				"[NPCWaypointFollower] No waypoint parts found in '%s/%s'. Expected names like Waypoint1, Waypoint2...",
+				buildingName,
+				eventType
+			)
+		)
 	end
 
 	return list
@@ -162,11 +178,13 @@ end
 -- ─── Movement ─────────────────────────────────────────────────────────────────
 
 local function moveTo(targetPos, offset)
-	local goal    = targetPos + (offset or Vector3.zero)
+	local goal = targetPos + (offset or Vector3.zero)
 	local reached = false
 
 	local conn = humanoid.MoveToFinished:Connect(function(didReach)
-		if didReach then reached = true end
+		if didReach then
+			reached = true
+		end
 	end)
 
 	humanoid:MoveTo(goal)
@@ -227,10 +245,11 @@ end
 -- ─── Runner ───────────────────────────────────────────────────────────────────
 
 local function run()
+	print("Starting NPC movement...")
 	local buildingName = npcModel:GetAttribute("BuildingName")
-	local eventType    = npcModel:GetAttribute("EventType")
-	local startDelay   = npcModel:GetAttribute("StartDelay") or 0
-	local rawOffset    = npcModel:GetAttribute("PositionOffset")
+	local eventType = npcModel:GetAttribute("EventType")
+	local startDelay = npcModel:GetAttribute("StartDelay") or 0
+	local rawOffset = npcModel:GetAttribute("PositionOffset")
 
 	if not buildingName or not eventType then
 		warn("[NPCWaypointFollower] BuildingName or EventType missing on: " .. npcModel.Name)
@@ -239,16 +258,32 @@ local function run()
 
 	local offset = rawOffset or Vector3.zero
 
-	if startDelay > 0 then task.wait(startDelay) end
+	if startDelay > 0 then
+		print("Waiting for start delay...")
+		task.wait(startDelay)
+	end
 
 	local waypoints = collectWaypoints(buildingName, eventType)
-	if #waypoints == 0 then return end
+	print("Collected waypoints:", #waypoints)
+
+	if #waypoints == 0 then
+		print("No waypoints found.")
+		return
+	end
 
 	for _, entry in ipairs(waypoints) do
-		if not npcModel.Parent then return end
-		if humanoid.Health <= 0 then return end
+		if not npcModel.Parent then
+			print("NPC model is no longer parented.")
+			return
+		end
+		if humanoid.Health <= 0 then
+			print("NPC has died.")
+			return
+		end
 
-		local wp     = entry.part
+		local wp = entry.part
+		print("Moving to waypoint:", wp.Name)
+
 		local wpType = wp:GetAttribute("WaypointType") or "Transit"
 
 		if wpType == "Transit" then
@@ -256,7 +291,10 @@ local function run()
 		elseif wpType == "Hold" then
 			handleHold(wp, offset)
 		elseif wpType == "Finish" then
-			if handleFinish(wp, offset) == false then return end
+			if handleFinish(wp, offset) == false then
+				print("Reached finish waypoint.")
+				return
+			end
 		else
 			warn("[NPCWaypointFollower] Unknown WaypointType '" .. tostring(wpType) .. "' — treating as Transit.")
 			handleTransit(wp, offset)
@@ -267,7 +305,9 @@ end
 -- ─── Entry point ──────────────────────────────────────────────────────────────
 
 local function start()
-	if started then return end
+	if started then
+		return
+	end
 	started = true
 	npcModel:SetAttribute("PathingStarted", true)
 
@@ -282,9 +322,11 @@ local startEvent = npcModel:FindFirstChild(START_EVENT_NAME)
 if startEvent and startEvent:IsA("BindableEvent") then
 	startEvent.Event:Connect(start)
 else
-	warn(string.format(
-		"[NPCWaypointFollower] Missing BindableEvent '%s' in %s. Pathing will not auto-start.",
-		START_EVENT_NAME,
-		npcModel:GetFullName()
-	))
+	warn(
+		string.format(
+			"[NPCWaypointFollower] Missing BindableEvent '%s' in %s. Pathing will not auto-start.",
+			START_EVENT_NAME,
+			npcModel:GetFullName()
+		)
+	)
 end

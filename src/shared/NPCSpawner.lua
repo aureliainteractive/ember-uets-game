@@ -8,7 +8,7 @@
 --   require(game.ReplicatedStorage.Shared.NPCSpawner).spawn({
 --     buildingName  = "MiguelRua",
 --     eventType     = "EarthquakeSimulation",
---     count         = 2500,
+--     count         = 20,
 --     walkSpeed     = 10,        -- optional, default 10
 --     maxStartDelay = 8,         -- optional, seconds — spread NPC starts over this window
 --     offsetRadius  = 2.5,       -- optional, studs — max random XZ offset per NPC
