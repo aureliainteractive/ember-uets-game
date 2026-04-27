@@ -21,6 +21,13 @@
 --   Workspace.NPC_Waypoints.<B>.<E>       — Waypoint parts (read by the follower, not here)
 --   Workspace.NPC_Spawns.<BuildingName>   — BaseParts used as spawn positions
 
+-- FormalMenPantsId = 11801108252
+-- DiaryPantsId = 140366176953306
+-- SkirtAccesoryName = "BlueSkirt"
+-- FormalWomenStockingsId = 14993018644
+-- WomanGlassesName = "WomanGlasses"
+-- ManGlassesName = "ManGlasses"
+
 -- ─── Services ─────────────────────────────────────────────────────────────────
 
 local ReplicatedStorage  = game:GetService("ReplicatedStorage")
@@ -35,6 +42,23 @@ local BATCH_INTERVAL    = 0.05  -- seconds between batches (~500 NPCs/sec at the
 local NPC_FOLDER_NAME   = "SpawnedNPCs"   -- Workspace folder that holds active NPCs
 local TEMPLATE_NAME     = "NPC_Template"  -- Name of the Model in ReplicatedStorage
 local SPAWNS_FOLDER     = "NPC_Spawns"    -- Workspace folder with spawn BaseParts per building
+local NPCS_FOLDER_NAME  = "NPCs"
+
+local FORMAL_MEN_PANTS_ID = "rbxassetid://11801108252"
+local DIARY_PANTS_ID = "rbxassetid://140366176953306"
+local FORMAL_WOMEN_STOCKINGS_ID = "rbxassetid://14993018644"
+local SKIRT_ACCESSORY_NAME = "BlueSkirt"
+local WOMAN_GLASSES_NAME = "WomanGlasses"
+local MAN_GLASSES_NAME = "ManGlasses"
+
+local TORSO_COLOR = Color3.fromRGB(27, 42, 53)
+local SKIN_TONES = {
+	Color3.fromRGB(255, 204, 153),
+	Color3.fromRGB(240, 184, 146),
+	Color3.fromRGB(224, 172, 105),
+	Color3.fromRGB(198, 134, 66),
+	Color3.fromRGB(141, 85, 36),
+}
 
 -- ─── State ────────────────────────────────────────────────────────────────────
 
@@ -47,6 +71,97 @@ local NPCSpawner = {}
 -- ─── Helpers ──────────────────────────────────────────────────────────────────
 
 local rng = Random.new()
+
+local npcsRoot = ReplicatedStorage:WaitForChild(NPCS_FOLDER_NAME)
+
+local function pickRandomChild(folder)
+	local children = folder:GetChildren()
+	if #children == 0 then
+		return nil
+	end
+	return children[rng:NextInteger(1, #children)]
+end
+
+local function tryAddAccessory(clone, accessory)
+	if not accessory or not accessory:IsA("Accessory") then
+		return
+	end
+	local humanoid = clone:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return
+	end
+	local accessoryClone = accessory:Clone()
+	humanoid:AddAccessory(accessoryClone)
+end
+
+local function applyUniformAppearance(clone, genderFolderName, isFormal)
+	local pants = clone:FindFirstChild("Clothing")
+	if pants and pants:IsA("Pants") then
+		if isFormal then
+			pants.PantsTemplate = (genderFolderName == "Women") and FORMAL_WOMEN_STOCKINGS_ID or FORMAL_MEN_PANTS_ID
+		else
+			pants.PantsTemplate = DIARY_PANTS_ID
+		end
+	end
+end
+
+local function applyBodyColors(clone)
+	local bodyColors = clone:FindFirstChild("Body Colors")
+	if not (bodyColors and bodyColors:IsA("BodyColors")) then
+		return
+	end
+
+	local skinTone = SKIN_TONES[rng:NextInteger(1, #SKIN_TONES)]
+	bodyColors.HeadColor3 = skinTone
+	bodyColors.LeftArmColor3 = skinTone
+	bodyColors.RightArmColor3 = skinTone
+	bodyColors.LeftLegColor3 = skinTone
+	bodyColors.RightLegColor3 = skinTone
+	bodyColors.TorsoColor3 = TORSO_COLOR
+end
+
+local function buildRandomNPC()
+	local genderFolderName = (rng:NextNumber() < 0.5) and "Men" or "Women"
+	local genderFolder = npcsRoot:FindFirstChild(genderFolderName)
+	if not genderFolder then
+		return nil
+	end
+
+	local bodysFolder = genderFolder:FindFirstChild("Bodys")
+	local hairsFolder = genderFolder:FindFirstChild("Hairs")
+	local accessoriesFolder = genderFolder:FindFirstChild("Accesories")
+	if not (bodysFolder and hairsFolder and accessoriesFolder) then
+		return nil
+	end
+
+	local bodyTemplate = pickRandomChild(bodysFolder)
+	local hairTemplate = pickRandomChild(hairsFolder)
+	if not (bodyTemplate and bodyTemplate:IsA("Model")) then
+		return nil
+	end
+
+	local clone = bodyTemplate:Clone()
+	local isFormal = rng:NextNumber() < 0.5
+	local glassesName = (genderFolderName == "Women") and WOMAN_GLASSES_NAME or MAN_GLASSES_NAME
+	local glassesTemplate = accessoriesFolder:FindFirstChild(glassesName)
+	local skirtTemplate = accessoriesFolder:FindFirstChild(SKIRT_ACCESSORY_NAME)
+
+	if hairTemplate and hairTemplate:IsA("Accessory") then
+		tryAddAccessory(clone, hairTemplate)
+	end
+
+	if glassesTemplate and glassesTemplate:IsA("Accessory") and rng:NextNumber() < 0.35 then
+		tryAddAccessory(clone, glassesTemplate)
+	end
+
+	if genderFolderName == "Women" and isFormal and skirtTemplate and skirtTemplate:IsA("Accessory") then
+		tryAddAccessory(clone, skirtTemplate)
+	end
+
+	applyUniformAppearance(clone, genderFolderName, isFormal)
+	applyBodyColors(clone)
+	return clone
+end
 
 -- Returns a random unit offset clamped to a horizontal radius.
 local function randomOffset(radius)
@@ -125,7 +240,7 @@ function NPCSpawner.spawn(config)
 
 	local template = ReplicatedStorage:FindFirstChild(TEMPLATE_NAME)
 	if not template then
-		error("[NPCSpawner] ReplicatedStorage." .. TEMPLATE_NAME .. " not found.")
+		warn("[NPCSpawner] ReplicatedStorage." .. TEMPLATE_NAME .. " not found. Using ReplicatedStorage.NPCs only.")
 	end
 
 	local spawnPoints = getSpawnPoints(buildingName)
@@ -153,7 +268,14 @@ function NPCSpawner.spawn(config)
 				if spawned >= count then break end
 				spawned += 1
 
-				local clone = template:Clone()
+				local clone = buildRandomNPC()
+				if not clone and template then
+					clone = template:Clone()
+				end
+				if not clone then
+					warn("[NPCSpawner] Could not build random NPC and no fallback template exists.")
+					continue
+				end
 				clone.Name = buildingName .. "_NPC_" .. spawned
 
 				-- Pick a random spawn point from the pool.
