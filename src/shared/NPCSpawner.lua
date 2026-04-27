@@ -44,7 +44,7 @@ local TEMPLATE_NAME     = "NPC_Template"  -- Name of the Model in ReplicatedStor
 local SPAWNS_FOLDER     = "NPC_Spawns"    -- Workspace folder with spawn BaseParts per building
 local NPCS_FOLDER_NAME  = "NPCs"
 
-local FORMAL_MEN_PANTS_ID = "rbxassetid://11801108252"
+local FORMAL_MEN_PANTS_ID = "rbxassetid://11801108237"
 local DIARY_PANTS_ID = "rbxassetid://140366176953306"
 local FORMAL_WOMEN_STOCKINGS_ID = "rbxassetid://14993018644"
 local SKIRT_ACCESSORY_NAME = "BlueSkirt"
