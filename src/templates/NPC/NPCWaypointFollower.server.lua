@@ -24,12 +24,69 @@ local npcModel = script.Parent
 local humanoid = npcModel:FindFirstChildOfClass("Humanoid")
 local rootPart = npcModel:FindFirstChild("HumanoidRootPart")
 local START_EVENT_NAME = "StartPathing"
+local WALK_SPEED_THRESHOLD = 0.1
+local DEFAULT_WALK_ANIM_R6 = "rbxassetid://180426354"
+local DEFAULT_WALK_ANIM_R15 = "rbxassetid://507777826"
 local started = false
 local runningThread = nil
 
 if not humanoid or not rootPart then
 	warn("[NPCWaypointFollower] Missing Humanoid or HumanoidRootPart in: " .. npcModel.Name)
 	return
+end
+
+local function setupWalkAnimationFallback()
+	-- If the rig has a server-side Animate script, let that script own animation state.
+	-- NOTE: LocalScript Animate inside NPC templates does not run for server-driven NPCs.
+	local animateScript = npcModel:FindFirstChild("Animate")
+	if animateScript and animateScript:IsA("Script") and animateScript.Enabled then
+		return
+	end
+	if animateScript and animateScript:IsA("LocalScript") then
+		warn("[NPCWaypointFollower] Animate is LocalScript; using server walk fallback for NPC.")
+	end
+
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
+		animator = Instance.new("Animator")
+		animator.Parent = humanoid
+	end
+
+	local walkAnim = Instance.new("Animation")
+	walkAnim.Name = "NPCDefaultWalk"
+	walkAnim.AnimationId = humanoid.RigType == Enum.HumanoidRigType.R15
+		and DEFAULT_WALK_ANIM_R15
+		or DEFAULT_WALK_ANIM_R6
+
+	local ok, walkTrack = pcall(function()
+		return animator:LoadAnimation(walkAnim)
+	end)
+	if not ok or not walkTrack then
+		warn("[NPCWaypointFollower] Could not load default walk animation.")
+		walkAnim:Destroy()
+		return
+	end
+
+	walkTrack.Name = "NPCDefaultWalkTrack"
+	walkTrack.Priority = Enum.AnimationPriority.Movement
+	walkTrack.Looped = true
+
+	humanoid.Running:Connect(function(speed)
+		if humanoid.Health <= 0 then return end
+		if speed > WALK_SPEED_THRESHOLD then
+			if not walkTrack.IsPlaying then
+				walkTrack:Play(0.15)
+			end
+		elseif walkTrack.IsPlaying then
+			walkTrack:Stop(0.15)
+		end
+	end)
+
+	humanoid.Died:Connect(function()
+		if walkTrack.IsPlaying then
+			walkTrack:Stop(0.1)
+		end
+	end)
 end
 
 -- ─── Waypoint collection ──────────────────────────────────────────────────────
@@ -193,6 +250,7 @@ local function start()
 	if started then return end
 	started = true
 	npcModel:SetAttribute("PathingStarted", true)
+	setupWalkAnimationFallback()
 	runningThread = task.spawn(run)
 end
 
