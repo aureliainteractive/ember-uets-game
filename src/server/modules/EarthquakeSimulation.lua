@@ -14,6 +14,9 @@ local RNG = Random.new()
 local MIN_VOLUME_QUAKE = 0.15
 local SCAN_YIELD_EVERY = 2000
 local MIN_STRUCTURAL_VOLUME = 1.2
+local MAX_STRUCTURAL_VOLUME = 220
+local MAX_PART_DIMENSION = 28
+local MAX_UNANCHOR_ASSEMBLY_MASS = 900
 
 local PILLAR_COLOR = Color3.fromRGB(181, 125, 93)
 local STUCCO_TILE_SIZE = Vector3.new(3.288, 0.038, 3.288)
@@ -56,8 +59,18 @@ end
 local function isStructuralCandidate(part)
 	if not isValidPart(part) then return false end
 	if not part.Anchored then return false end
-	if getVolume(part) < MIN_STRUCTURAL_VOLUME then return false end
+	local volume = getVolume(part)
+	if volume < MIN_STRUCTURAL_VOLUME or volume > MAX_STRUCTURAL_VOLUME then return false end
+	if math.max(part.Size.X, part.Size.Y, part.Size.Z) > MAX_PART_DIMENSION then return false end
 	if part.Name:match("^Waypoint") or part.Name:match("^Refuge") then return false end
+	return true
+end
+
+local function canUnanchorPart(part)
+	if not isValidPart(part) then return false end
+	if not part.Anchored then return false end
+	if math.max(part.Size.X, part.Size.Y, part.Size.Z) > MAX_PART_DIMENSION then return false end
+	if part.AssemblyMass > MAX_UNANCHOR_ASSEMBLY_MASS then return false end
 	return true
 end
 
@@ -126,7 +139,7 @@ end
 -- Unanchors and impulses a part based on difficulty.
 function EarthquakeSimulation.unanchorAndKick(part, difficulty)
 	if not part or not part.Parent then return nil end
-	if not part:IsA("BasePart") or not part.Anchored then return nil end
+	if not part:IsA("BasePart") or not canUnanchorPart(part) then return nil end
 
 	local state = { part = part, Anchored = true, CFrame = part.CFrame }
 	part.Anchored = false
@@ -149,13 +162,14 @@ end
 function EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
 	local c = EarthquakeSimulation.collectEarthquakeCandidates(building)
 
-	local tilesToDrop = (difficulty == 1 and 24) or (difficulty == 2 and 32) or 40
-	local tvsToDrop = (difficulty == 1 and 14) or (difficulty == 2 and 24) or 36
-	local pillarsToDrop = (difficulty == 1 and 18) or (difficulty == 2 and 30) or 48
-	local lightsToDrop = (difficulty == 1 and 72) or (difficulty == 2 and 108) or 140
-	local cascadeBudget = (difficulty == 1 and 130) or (difficulty == 2 and 240) or 360
-	local cascadePerPillar = (difficulty == 1 and 8) or (difficulty == 2 and 12) or 16
-	local cascadeRadius = (difficulty == 1 and 14) or (difficulty == 2 and 20) or 26
+	local tilesToDrop = (difficulty == 1 and 8) or (difficulty == 2 and 12) or 16
+	local tvsToDrop = (difficulty == 1 and 4) or (difficulty == 2 and 6) or 9
+	local pillarsToDrop = (difficulty == 1 and 4) or (difficulty == 2 and 7) or 10
+	local lightsToDrop = (difficulty == 1 and 12) or (difficulty == 2 and 18) or 24
+	local cascadeBudget = (difficulty == 1 and 12) or (difficulty == 2 and 20) or 30
+	local cascadePerPillar = (difficulty == 1 and 2) or (difficulty == 2 and 3) or 4
+	local cascadeRadius = (difficulty == 1 and 10) or (difficulty == 2 and 14) or 18
+	local maxTotalDrops = (difficulty == 1 and 30) or (difficulty == 2 and 45) or 60
 
 	local originals = {}
 	local dropped = {}
@@ -163,6 +177,7 @@ function EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
 	local function rememberState(state)
 		if not state then return end
 		if dropped[state.part] then return end
+		if #originals >= maxTotalDrops then return end
 		dropped[state.part] = true
 		table.insert(originals, state)
 	end
@@ -201,6 +216,9 @@ function EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
 	end
 
 	local function kick(list, amount, preferLarge)
+		if #originals >= maxTotalDrops then return end
+		amount = math.max(0, math.min(amount, maxTotalDrops - #originals))
+		if amount <= 0 then return end
 		local picked = preferLarge and pickLargestRandom(list, amount, 0.4) or pickRandom(list, amount)
 		for _, obj in ipairs(picked) do
 			local state = EarthquakeSimulation.unanchorAndKick(obj, difficulty)
@@ -210,6 +228,9 @@ function EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
 
 	local function collapseAdjacentAround(part, amount, radius)
 		if amount <= 0 or radius <= 0 then return 0 end
+		if #originals >= maxTotalDrops then return 0 end
+		amount = math.max(0, math.min(amount, maxTotalDrops - #originals))
+		if amount <= 0 then return 0 end
 		local nearby = {}
 		for _, candidate in ipairs(c.structural) do
 			if not dropped[candidate] and candidate.Parent and candidate.Anchored then

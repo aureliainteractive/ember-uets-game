@@ -80,8 +80,10 @@ local logo = blk:WaitForChild("aureliaLogo")
 local subtitle = blk:WaitForChild("subtitle")
 local loadingStatus = logos:WaitForChild("LoadingStatus")
 
+local gameVersion = game.PlaceVersion
+
 local function setLoadingStatus(message)
-	loadingStatus.Text = "Cargando: " .. message
+	loadingStatus.Text = "Cargando: " .. message .. " - " .. gameVersion
 end
 
 local function getAssetCategory(instance)
