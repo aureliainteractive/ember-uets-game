@@ -23,6 +23,9 @@ local TICK_RATE      = 0.1   -- seconds between movement checks
 local npcModel = script.Parent
 local humanoid = npcModel:FindFirstChildOfClass("Humanoid")
 local rootPart = npcModel:FindFirstChild("HumanoidRootPart")
+local START_EVENT_NAME = "StartPathing"
+local started = false
+local runningThread = nil
 
 if not humanoid or not rootPart then
 	warn("[NPCWaypointFollower] Missing Humanoid or HumanoidRootPart in: " .. npcModel.Name)
@@ -186,4 +189,20 @@ local function run()
 	end
 end
 
-task.spawn(run)
+local function start()
+	if started then return end
+	started = true
+	npcModel:SetAttribute("PathingStarted", true)
+	runningThread = task.spawn(run)
+end
+
+local startEvent = npcModel:FindFirstChild(START_EVENT_NAME)
+if startEvent and startEvent:IsA("BindableEvent") then
+	startEvent.Event:Connect(start)
+else
+	warn(string.format(
+		"[NPCWaypointFollower] Missing BindableEvent '%s' in %s. Pathing will not auto-start.",
+		START_EVENT_NAME,
+		npcModel:GetFullName()
+	))
+end

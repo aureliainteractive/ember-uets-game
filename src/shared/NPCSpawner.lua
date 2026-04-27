@@ -5,7 +5,7 @@
 --            so the server doesn't spike on a single frame.
 --
 -- Usage (fire from any server script or BindableEvent):
---   require(ServerScriptService.NPCSpawner).spawn({
+--   require(game.ReplicatedStorage.Shared.NPCSpawner).spawn({
 --     buildingName  = "MiguelRua",
 --     eventType     = "EarthquakeSimulation",
 --     count         = 2500,
@@ -14,7 +14,7 @@
 --     offsetRadius  = 2.5,       -- optional, studs — max random XZ offset per NPC
 --   })
 --
---   require(ServerScriptService.NPCSpawner).despawn("MiguelRua", "EarthquakeSimulation")
+--   require(game.ReplicatedStorage.Shared.NPCSpawner).despawn("MiguelRua", "EarthquakeSimulation")
 --
 -- Dependencies:
 --   ReplicatedStorage.NPC_Template        — NPC Model with Humanoid + NPCWaypointFollower script
@@ -26,6 +26,7 @@
 local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local RunService         = game:GetService("RunService")
+local NPCFollowerController = require(script.Parent:WaitForChild("NPCFollowerController"))
 
 -- ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -169,11 +170,13 @@ function NPCSpawner.spawn(config)
 				clone:SetAttribute("EventType",      eventType)
 				clone:SetAttribute("StartDelay",     rng:NextNumber(0, maxStartDelay))
 				clone:SetAttribute("PositionOffset", randomOffset(offsetRadius))
+				clone:SetAttribute("PathingStarted", false)
 
 				local h = clone:FindFirstChildOfClass("Humanoid")
 				if h then h.WalkSpeed = walkSpeed end
 
-				clone.Parent = group  -- parenting to Workspace triggers the Script inside
+				clone.Parent = group
+				NPCFollowerController.activate(clone)
 			end
 
 			task.wait(BATCH_INTERVAL)
