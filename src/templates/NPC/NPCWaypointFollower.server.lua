@@ -78,8 +78,12 @@ local function setupWalkAnimation()
 				break
 			end
 
-			-- MoveDirection is unreliable on the server for NPCs; use WalkSpeed instead.
-			local moving = humanoid.WalkSpeed > WALK_SPEED_THRESHOLD
+			-- MoveDirection is unreliable on the server for NPCs.
+			-- Compare actual horizontal speed against a fraction of WalkSpeed.
+			local velocity = rootPart.AssemblyLinearVelocity
+			local horizontalSpeed = math.sqrt((velocity.X * velocity.X) + (velocity.Z * velocity.Z))
+			local movingThreshold = math.max(WALK_SPEED_THRESHOLD, humanoid.WalkSpeed * 0.25)
+			local moving = horizontalSpeed >= movingThreshold
 			print("NPC is moving:", moving)
 
 			if moving then
