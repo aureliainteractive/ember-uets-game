@@ -21,8 +21,8 @@ local WALK_SPEED_THRESHOLD = 0.1
 local START_EVENT_NAME = "StartPathing"
 
 -- Door interaction constants
-local DOOR_DETECTION_RADIUS = 8 -- studs: search for doors within this distance
-local DOOR_TRIGGER_DISTANCE = 6 -- studs: distance to trigger door opening
+local DOOR_DETECTION_RADIUS = 16 -- studs: scan nearby doors with extra margin
+local DOOR_TRIGGER_DISTANCE = 12 -- studs: trigger opening before NPC gets stuck at frame
 local DOOR_DEBOUNCE_TIME = 1.5 -- seconds: prevent door spam from same NPC
 
 -- ─── Global door cache (built once, updated on structure changes) ──────────────
@@ -247,6 +247,10 @@ function NPCWaypointFollower.start(npcModel)
 			rebuildDoorCache()
 		end
 
+		local closestDoor = nil
+		local closestDistance = math.huge
+		local closestOpenDoorEvent = nil
+
 		-- Iterate through cached doors only (no workspace scan!)
 		for _, doorModel in ipairs(doorCache) do
 			-- Safety check: door still exists and is a valid model
@@ -254,16 +258,12 @@ function NPCWaypointFollower.start(npcModel)
 				continue
 			end
 
-			-- Get the position of the door model
-			local doorPos = nil
-			if doorModel.PrimaryPart then
-				doorPos = doorModel.PrimaryPart.Position
-			else
-				local firstPart = doorModel:FindFirstChildOfClass("BasePart")
-				if firstPart then
-					doorPos = firstPart.Position
-				end
-			end
+			-- Get the position of the door model from its pivot.
+			-- This is more reliable than relying on PrimaryPart/first BasePart.
+			local ok, pivot = pcall(function()
+				return doorModel:GetPivot()
+			end)
+			local doorPos = ok and pivot and pivot.Position or nil
 
 			if not doorPos then
 				continue
@@ -290,26 +290,33 @@ function NPCWaypointFollower.start(npcModel)
 			local lastTriggered = doorDebounces[doorModel].lastTriggeredTime or 0
 			local timeSinceLastTrigger = tick() - lastTriggered
 
-			if timeSinceLastTrigger >= DOOR_DEBOUNCE_TIME then
-				-- Trigger the door
-				local openDoorEvent = doorModel:FindFirstChild("OpenDoorEvent", true)
-				if not openDoorEvent then
-					-- Maybe the door system hasn't created the BindableEvent yet; try rebuilding cache
-					if tick() - doorCacheLastUpdate > 0 then
-						rebuildDoorCache()
-						openDoorEvent = doorModel:FindFirstChild("OpenDoorEvent")
-					end
-				end
-				if openDoorEvent and openDoorEvent:IsA("BindableEvent") then
-					doorDebounces[doorModel].lastTriggeredTime = tick()
-					print("[NPCWaypointFollower] " .. npcModel.Name .. " opening door: " .. doorModel.Name .. " (distance: " .. tostring(math.floor(distance)) .. ")")
-					openDoorEvent:Fire()
-				else
-					if distance < DOOR_TRIGGER_DISTANCE then
-						print("[NPCWaypointFollower] WARNING: " .. doorModel.Name .. " has no OpenDoorEvent!")
-					end
-				end
+			if timeSinceLastTrigger < DOOR_DEBOUNCE_TIME then
+				continue
 			end
+
+			local openDoorEvent = doorModel:FindFirstChild("OpenDoorEvent", true)
+			if not openDoorEvent then
+				continue
+			end
+
+			if not openDoorEvent:IsA("BindableEvent") then
+				continue
+			end
+
+			if distance < closestDistance then
+				closestDoor = doorModel
+				closestDistance = distance
+				closestOpenDoorEvent = openDoorEvent
+			end
+		end
+
+		if closestDoor and closestOpenDoorEvent and closestDistance <= DOOR_TRIGGER_DISTANCE then
+			if not doorDebounces[closestDoor] then
+				doorDebounces[closestDoor] = {}
+			end
+			doorDebounces[closestDoor].lastTriggeredTime = tick()
+			print("[NPCWaypointFollower] " .. npcModel.Name .. " opening door: " .. closestDoor.Name .. " (distance: " .. tostring(math.floor(closestDistance)) .. ")")
+			closestOpenDoorEvent:Fire()
 		end
 	end
 
