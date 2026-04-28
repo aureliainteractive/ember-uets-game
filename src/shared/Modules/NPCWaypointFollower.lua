@@ -34,19 +34,70 @@ local DOOR_CACHE_UPDATE_INTERVAL = 5 -- seconds: rescan doors every 5 seconds
 local function rebuildDoorCache()
 	doorCache = {}
 
-	-- Scan entire workspace for any descendant that has the DoorType attribute.
-	-- If the attribute is on a child part, prefer the containing Model as the door entry.
+	-- Helper: given a Model (or ancestor), find the actual door container we should operate on.
+	local function findDoorContainer(candidateModel)
+		if not candidateModel or not candidateModel:IsA("Model") then
+			return nil
+		end
+
+		-- Prefer a nested Model named DoorModel
+		local nested = candidateModel:FindFirstChild("DoorModel", true)
+		if nested and nested:IsA("Model") then
+			return nested
+		end
+
+		-- Prefer a model (including candidate) that contains a ToggleDoor RemoteEvent
+		for _, m in ipairs(candidateModel:GetDescendants()) do
+			if m:IsA("RemoteEvent") and m.Name == "ToggleDoor" then
+				-- climb to the nearest Model ancestor of that RemoteEvent
+				local mm = m
+				while mm and not mm:IsA("Model") do
+					mm = mm.Parent
+				end
+				if mm then
+					return mm
+				end
+			end
+		end
+
+		-- If none of the above, prefer the candidateModel itself.
+		return candidateModel
+	end
+
 	local seen = {}
 	for _, descendant in ipairs(workspace:GetDescendants()) do
+		-- If a descendant has the DoorType attribute, look at its model ancestor
 		if descendant.GetAttribute and descendant:GetAttribute("DoorType") ~= nil then
 			local modelAncestor = descendant
 			while modelAncestor and not modelAncestor:IsA("Model") do
 				modelAncestor = modelAncestor.Parent
 			end
-			local toAdd = modelAncestor or descendant
-			if not seen[toAdd] then
-				table.insert(doorCache, toAdd)
-				seen[toAdd] = true
+			local rootModel = modelAncestor or (descendant:IsA("Model") and descendant) or nil
+			local container = rootModel and findDoorContainer(rootModel) or nil
+			if container and not seen[container] then
+				table.insert(doorCache, container)
+				seen[container] = true
+			end
+		end
+
+		-- Also include any Model explicitly named DoorModel
+		if descendant:IsA("Model") and descendant.Name == "DoorModel" then
+			local container = findDoorContainer(descendant)
+			if container and not seen[container] then
+				table.insert(doorCache, container)
+				seen[container] = true
+			end
+		end
+
+		-- Also include models that directly contain a ToggleDoor RemoteEvent (top-level models)
+		if descendant:IsA("RemoteEvent") and descendant.Name == "ToggleDoor" then
+			local mm = descendant
+			while mm and not mm:IsA("Model") do
+				mm = mm.Parent
+			end
+			if mm and not seen[mm] then
+				table.insert(doorCache, mm)
+				seen[mm] = true
 			end
 		end
 	end
@@ -72,7 +123,17 @@ end)
 
 -- Update cache when new models added (mark for rebuild)
 workspace.DescendantAdded:Connect(function(descendant)
+	local shouldMark = false
 	if descendant.GetAttribute and descendant:GetAttribute("DoorType") ~= nil then
+		shouldMark = true
+	end
+	if descendant:IsA("Model") and descendant.Name == "DoorModel" then
+		shouldMark = true
+	end
+	if descendant:IsA("RemoteEvent") and descendant.Name == "ToggleDoor" then
+		shouldMark = true
+	end
+	if shouldMark then
 		doorCacheLastUpdate = 0
 	end
 end)
@@ -231,7 +292,14 @@ function NPCWaypointFollower.start(npcModel)
 
 			if timeSinceLastTrigger >= DOOR_DEBOUNCE_TIME then
 				-- Trigger the door
-				local openDoorEvent = doorModel:FindFirstChild("OpenDoorEvent")
+				local openDoorEvent = doorModel:FindFirstChild("OpenDoorEvent", true)
+				if not openDoorEvent then
+					-- Maybe the door system hasn't created the BindableEvent yet; try rebuilding cache
+					if tick() - doorCacheLastUpdate > 0 then
+						rebuildDoorCache()
+						openDoorEvent = doorModel:FindFirstChild("OpenDoorEvent")
+					end
+				end
 				if openDoorEvent and openDoorEvent:IsA("BindableEvent") then
 					doorDebounces[doorModel].lastTriggeredTime = tick()
 					print("[NPCWaypointFollower] " .. npcModel.Name .. " opening door: " .. doorModel.Name .. " (distance: " .. tostring(math.floor(distance)) .. ")")
