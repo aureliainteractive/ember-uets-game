@@ -25,6 +25,58 @@ local DOOR_DETECTION_RADIUS = 8 -- studs: search for doors within this distance
 local DOOR_TRIGGER_DISTANCE = 6 -- studs: distance to trigger door opening
 local DOOR_DEBOUNCE_TIME = 1.5 -- seconds: prevent door spam from same NPC
 
+-- ─── Global door cache (built once, updated on structure changes) ──────────────
+
+local doorCache = {}
+local doorCacheLastUpdate = 0
+local DOOR_CACHE_UPDATE_INTERVAL = 5 -- seconds: rescan doors every 5 seconds
+
+local function rebuildDoorCache()
+	doorCache = {}
+
+	-- Scan entire workspace for any descendant that has the DoorType attribute.
+	-- If the attribute is on a child part, prefer the containing Model as the door entry.
+	local seen = {}
+	for _, descendant in ipairs(workspace:GetDescendants()) do
+		if descendant.GetAttribute and descendant:GetAttribute("DoorType") ~= nil then
+			local modelAncestor = descendant
+			while modelAncestor and not modelAncestor:IsA("Model") do
+				modelAncestor = modelAncestor.Parent
+			end
+			local toAdd = modelAncestor or descendant
+			if not seen[toAdd] then
+				table.insert(doorCache, toAdd)
+				seen[toAdd] = true
+			end
+		end
+	end
+
+	doorCacheLastUpdate = tick()
+	print("[NPCWaypointFollower] Door cache rebuilt with " .. #doorCache .. " doors")
+end
+
+-- Build cache on first load (slightly delayed to allow initial setup)
+task.delay(0.5, rebuildDoorCache)
+-- Additional retries shortly after startup to handle ordering where doors
+-- are created after this module loads (helps avoid empty initial cache).
+task.delay(1.5, function()
+	if #doorCache == 0 then
+		rebuildDoorCache()
+	end
+end)
+task.delay(4.0, function()
+	if #doorCache == 0 then
+		rebuildDoorCache()
+	end
+end)
+
+-- Update cache when new models added (mark for rebuild)
+workspace.DescendantAdded:Connect(function(descendant)
+	if descendant.GetAttribute and descendant:GetAttribute("DoorType") ~= nil then
+		doorCacheLastUpdate = 0
+	end
+end)
+
 -- ─── Main Start Function ──────────────────────────────────────────────────────
 
 function NPCWaypointFollower.start(npcModel)
@@ -45,6 +97,11 @@ function NPCWaypointFollower.start(npcModel)
 
 	-- Local state for this NPC
 	local doorDebounces = {}
+
+	-- Ensure door cache exists when the first NPC starts (helps startup ordering)
+	if #doorCache == 0 then
+		rebuildDoorCache()
+	end
 
 	-- ─── Animation setup ─────────────────────────────────────────────────────
 	--
@@ -124,51 +181,64 @@ function NPCWaypointFollower.start(npcModel)
 
 		local npcPos = rootPart.Position
 
-		-- Use Workspace:FindPartBoundsInRadius to efficiently find nearby doors
-		local params = OverlapParams.new()
-		params.FilterType = Enum.RaycastFilterType.Blacklist
-		params.FilterDescendantsInstances = { npcModel }
+		-- Update cache if needed (every 5 seconds)
+		if tick() - doorCacheLastUpdate > DOOR_CACHE_UPDATE_INTERVAL then
+			rebuildDoorCache()
+		end
 
-		local nearbyParts = workspace:FindPartBoundsInRadius(npcPos, DOOR_DETECTION_RADIUS, params)
+		-- Iterate through cached doors only (no workspace scan!)
+		for _, doorModel in ipairs(doorCache) do
+			-- Safety check: door still exists and is a valid model
+			if not doorModel or not doorModel.Parent then
+				continue
+			end
 
-		for _, part in ipairs(nearbyParts) do
-			-- Check if this part is a door model or inside one
-			local doorModel = nil
-			if part:GetAttribute("DoorType") ~= nil then
-				doorModel = part
+			-- Get the position of the door model
+			local doorPos = nil
+			if doorModel.PrimaryPart then
+				doorPos = doorModel.PrimaryPart.Position
 			else
-				-- Walk up the tree to find a door model
-				local parent = part.Parent
-				while parent do
-					if parent:GetAttribute("DoorType") ~= nil then
-						doorModel = parent
-						break
-					end
-					parent = parent.Parent
+				local firstPart = doorModel:FindFirstChildOfClass("BasePart")
+				if firstPart then
+					doorPos = firstPart.Position
 				end
 			end
 
-			if doorModel and (doorModel.Position - npcPos).Magnitude <= DOOR_TRIGGER_DISTANCE then
-				-- Check if door is not already open
-				local isOpen = doorModel:GetAttribute("IsOpen") or false
-				if isOpen then
-					continue
-				end
+			if not doorPos then
+				continue
+			end
 
-				-- Check debounce
-				if not doorDebounces[doorModel] then
-					doorDebounces[doorModel] = {}
-				end
+			local distance = (doorPos - npcPos).Magnitude
 
-				local lastTriggered = doorDebounces[doorModel].lastTriggeredTime or 0
-				local timeSinceLastTrigger = tick() - lastTriggered
+			-- Only process doors within detection range
+			if distance > DOOR_DETECTION_RADIUS then
+				continue
+			end
 
-				if timeSinceLastTrigger >= DOOR_DEBOUNCE_TIME then
-					-- Trigger the door
-					local openDoorEvent = doorModel:FindFirstChild("OpenDoorEvent")
-					if openDoorEvent and openDoorEvent:IsA("BindableEvent") then
-						doorDebounces[doorModel].lastTriggeredTime = tick()
-						openDoorEvent:Fire()
+			-- Check if door is not already open
+			local isOpen = doorModel:GetAttribute("IsOpen") or false
+			if isOpen then
+				continue
+			end
+
+			-- Check debounce
+			if not doorDebounces[doorModel] then
+				doorDebounces[doorModel] = {}
+			end
+
+			local lastTriggered = doorDebounces[doorModel].lastTriggeredTime or 0
+			local timeSinceLastTrigger = tick() - lastTriggered
+
+			if timeSinceLastTrigger >= DOOR_DEBOUNCE_TIME then
+				-- Trigger the door
+				local openDoorEvent = doorModel:FindFirstChild("OpenDoorEvent")
+				if openDoorEvent and openDoorEvent:IsA("BindableEvent") then
+					doorDebounces[doorModel].lastTriggeredTime = tick()
+					print("[NPCWaypointFollower] " .. npcModel.Name .. " opening door: " .. doorModel.Name .. " (distance: " .. tostring(math.floor(distance)) .. ")")
+					openDoorEvent:Fire()
+				else
+					if distance < DOOR_TRIGGER_DISTANCE then
+						print("[NPCWaypointFollower] WARNING: " .. doorModel.Name .. " has no OpenDoorEvent!")
 					end
 				end
 			end
@@ -379,5 +449,9 @@ function NPCWaypointFollower.start(npcModel)
 
 	task.spawn(run)
 end
+
+-- Allow manual rebuild from the Command Bar for debugging: 
+-- local m = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Modules"):WaitForChild("NPCWaypointFollower")); m.rebuildDoorCache()
+NPCWaypointFollower.rebuildDoorCache = rebuildDoorCache
 
 return NPCWaypointFollower
