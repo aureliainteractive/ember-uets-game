@@ -103,6 +103,75 @@ local function setupWalkAnimation()
 	return walkTrack
 end
 
+-- ─── Door interaction system ──────────────────────────────────────────────────
+--
+-- Allows NPCs to automatically open doors when nearby.
+-- Tracks door debounces per NPC to avoid spam.
+
+local DOOR_DETECTION_RADIUS = 8 -- studs: search for doors within this distance
+local DOOR_TRIGGER_DISTANCE = 6 -- studs: distance to trigger door opening
+local DOOR_DEBOUNCE_TIME = 1.5 -- seconds: prevent door spam from same NPC
+
+local doorDebounces = {} -- { doorModel = { lastTriggeredTime = number } }
+
+local function tryOpenNearbyDoors()
+	if humanoid.Health <= 0 then
+		return
+	end
+
+	local npcPos = rootPart.Position
+
+	-- Use Workspace:FindPartBoundsInRadius to efficiently find nearby doors
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Blacklist
+	params.FilterDescendantsInstances = { npcModel }
+
+	local nearbyParts = workspace:FindPartBoundsInRadius(npcPos, DOOR_DETECTION_RADIUS, params)
+
+	for _, part in ipairs(nearbyParts) do
+		-- Check if this part is a door model or inside one
+		local doorModel = nil
+		if part:GetAttribute("DoorType") ~= nil then
+			doorModel = part
+		else
+			-- Walk up the tree to find a door model
+			local parent = part.Parent
+			while parent do
+				if parent:GetAttribute("DoorType") ~= nil then
+					doorModel = parent
+					break
+				end
+				parent = parent.Parent
+			end
+		end
+
+		if doorModel and (doorModel.Position - npcPos).Magnitude <= DOOR_TRIGGER_DISTANCE then
+			-- Check if door is not already open
+			local isOpen = doorModel:GetAttribute("IsOpen") or false
+			if isOpen then
+				continue
+			end
+
+			-- Check debounce
+			if not doorDebounces[doorModel] then
+				doorDebounces[doorModel] = {}
+			end
+
+			local lastTriggered = doorDebounces[doorModel].lastTriggeredTime or 0
+			local timeSinceLastTrigger = tick() - lastTriggered
+
+			if timeSinceLastTrigger >= DOOR_DEBOUNCE_TIME then
+				-- Trigger the door
+				local openDoorEvent = doorModel:FindFirstChild("OpenDoorEvent")
+				if openDoorEvent and openDoorEvent:IsA("BindableEvent") then
+					doorDebounces[doorModel].lastTriggeredTime = tick()
+					openDoorEvent:Fire()
+				end
+			end
+		end
+	end
+end
+
 -- ─── Waypoint collection ──────────────────────────────────────────────────────
 
 local function resolveWaypointsRoot()
@@ -194,6 +263,10 @@ local function moveTo(targetPos, offset)
 			conn:Disconnect()
 			return true
 		end
+		
+		-- Check for nearby doors during movement
+		tryOpenNearbyDoors()
+		
 		task.wait(TICK_RATE)
 		elapsed += TICK_RATE
 	end

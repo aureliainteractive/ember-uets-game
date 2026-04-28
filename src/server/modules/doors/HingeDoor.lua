@@ -76,6 +76,17 @@ function HingeDoor.init(doorModel)
 	local isAnimating = false
 	local onCooldown = false
 
+	-- Set initial IsOpen attribute for NPC detection
+	doorModel:SetAttribute("IsOpen", false)
+
+	-- Create OpenDoorEvent for NPC integration
+	local openDoorEvent = doorModel:FindFirstChild("OpenDoorEvent")
+	if not openDoorEvent then
+		openDoorEvent = Instance.new("BindableEvent")
+		openDoorEvent.Name = "OpenDoorEvent"
+		openDoorEvent.Parent = doorModel
+	end
+
 	local function targetCFrameForState(openState)
 		if openState then
 			local rotatedRelative = CFrame.Angles(0, math.rad(openAngle), 0) * closedRelative
@@ -111,11 +122,17 @@ function HingeDoor.init(doorModel)
 		tween.Completed:Wait()
 
 		isOpen = nextOpenState
+		doorModel:SetAttribute("IsOpen", isOpen)
 		isAnimating = false
 		beginCooldown()
 	end
 
 	toggleDoor.OnServerEvent:Connect(function()
+		tryToggleDoor()
+	end)
+
+	-- Connect OpenDoorEvent for NPC integration
+	openDoorEvent.Event:Connect(function()
 		tryToggleDoor()
 	end)
 
