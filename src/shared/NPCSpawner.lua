@@ -21,58 +21,97 @@
 --   Workspace.NPC_Waypoints.<B>.<E>       — Waypoint parts (read by the follower, not here)
 --   Workspace.NPC_Spawns.<BuildingName>   — BaseParts used as spawn positions
 
--- FormalMenPantsId = 11801108252
--- DiaryPantsId = 140366176953306
--- SkirtAccesoryName = "BlueSkirt"
--- FormalWomenStockingsId = 14993018644
--- WomanGlassesName = "WomanGlasses"
--- ManGlassesName = "ManGlasses"
-
--- ─── Services ─────────────────────────────────────────────────────────────────
-
-local ReplicatedStorage  = game:GetService("ReplicatedStorage")
-local ServerScriptService = game:GetService("ServerScriptService")
-local RunService         = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local NPCFollowerController = require(script.Parent:WaitForChild("NPCFollowerController"))
 
--- ─── Configuration ────────────────────────────────────────────────────────────
+-- ─── CONFIG ─────────────────────────────────────────────────────────────
 
-local BATCH_SIZE        = 25    -- NPCs cloned per batch tick (keeps frame time low)
-local BATCH_INTERVAL    = 0.05  -- seconds between batches (~500 NPCs/sec at these settings)
-local NPC_FOLDER_NAME   = "SpawnedNPCs"   -- Workspace folder that holds active NPCs
-local TEMPLATE_NAME     = "NPC_Template"  -- Name of the Model in ReplicatedStorage
-local SPAWNS_FOLDER     = "NPC_Spawns"    -- Workspace folder with spawn BaseParts per building
-local NPCS_FOLDER_NAME  = "NPCs"
+local BATCH_SIZE = 25
+local BATCH_INTERVAL = 0.05
+local NPC_FOLDER_NAME = "SpawnedNPCs"
+local SPAWNS_FOLDER = "NPC_Spawns"
+local NPCS_FOLDER_NAME = "NPCs"
 
 local FORMAL_MEN_PANTS_ID = "rbxassetid://11801108237"
 local DIARY_PANTS_ID = "rbxassetid://140366176953306"
 local FORMAL_WOMEN_STOCKINGS_ID = "rbxassetid://14993018644"
 local SKIRT_ACCESSORY_NAME = "BlueSkirt"
+
 local WOMAN_GLASSES_NAME = "WomanGlasses"
 local MAN_GLASSES_NAME = "ManGlasses"
 
 local TORSO_COLOR = Color3.fromRGB(27, 42, 53)
+
 local SKIN_TONES = {
-	Color3.fromRGB(255, 204, 153),
-	Color3.fromRGB(240, 184, 146),
-	Color3.fromRGB(224, 172, 105),
-	Color3.fromRGB(198, 134, 66),
-	Color3.fromRGB(141, 85, 36),
+	{ color = Color3.fromRGB(235, 200, 170), weight = 30 },
+	{ color = Color3.fromRGB(220, 180, 145), weight = 25 },
+	{ color = Color3.fromRGB(200, 155, 120), weight = 20 },
+	{ color = Color3.fromRGB(170, 125, 90), weight = 15 },
+	{ color = Color3.fromRGB(135, 95, 65), weight = 10 },
 }
 
--- ─── State ────────────────────────────────────────────────────────────────────
+-- 🎬 Animaciones por género
+local PACKS_BY_GENDER = {
+	Men = {
+		{
+			idle = { "rbxassetid://507766666", "rbxassetid://507766951" },
+			walk = "rbxassetid://507777826",
+			run = "rbxassetid://507767714",
+			jump = "rbxassetid://507765000",
+			fall = "rbxassetid://507767968",
+			climb = "rbxassetid://507765644",
+			swim = "rbxassetid://507784897",
+			swimidle = "rbxassetid://507785072",
+		},
+	},
 
--- Tracks active NPC groups so despawn() knows what to remove.
--- Key: "BuildingName_EventType" → Folder reference
+	Women = {
+		{
+			idle = { "rbxassetid://619511648", "rbxassetid://619511648" },
+			walk = "rbxassetid://619512767",
+			run = "rbxassetid://619512565",
+			jump = "rbxassetid://619511974",
+			fall = "rbxassetid://619511969",
+			climb = "rbxassetid://619511968",
+			swim = "rbxassetid://619512450",
+			swimidle = "rbxassetid://619512228",
+		},
+	},
+}
+
+-- ─── STATE ──────────────────────────────────────────────────────────────
+
 local activeGroups = {}
-
 local NPCSpawner = {}
-
--- ─── Helpers ──────────────────────────────────────────────────────────────────
-
 local rng = Random.new()
-
 local npcsRoot = ReplicatedStorage:WaitForChild(NPCS_FOLDER_NAME)
+
+-- ─── HELPERS ─────────────────────────────────────────────────────────────
+
+local function getWeightedSkinTone()
+	local total = 0
+	for _, e in ipairs(SKIN_TONES) do
+		total += e.weight
+	end
+	local roll = math.random(1, total)
+	local acc = 0
+	for _, e in ipairs(SKIN_TONES) do
+		acc += e.weight
+		if roll <= acc then
+			return e.color
+		end
+	end
+	return SKIN_TONES[1].color
+end
+
+local function varyColor(color)
+	local v = 5
+	return Color3.fromRGB(
+		math.clamp(color.R * 255 + math.random(-v, v), 0, 255),
+		math.clamp(color.G * 255 + math.random(-v, v), 0, 255),
+		math.clamp(color.B * 255 + math.random(-v, v), 0, 255)
+	)
+end
 
 local function pickRandomChild(folder)
 	local children = folder:GetChildren()
@@ -86,267 +125,359 @@ local function tryAddAccessory(clone, accessory)
 	if not accessory or not accessory:IsA("Accessory") then
 		return
 	end
-	local humanoid = clone:FindFirstChildOfClass("Humanoid")
-	if not humanoid then
-		return
+	local h = clone:FindFirstChildOfClass("Humanoid")
+	if h then
+		h:AddAccessory(accessory:Clone())
 	end
-	local accessoryClone = accessory:Clone()
-	humanoid:AddAccessory(accessoryClone)
 end
 
-local function applyUniformAppearance(clone, genderFolderName, isFormal)
-	local pants = clone:FindFirstChild("Clothing")
-	if pants and pants:IsA("Pants") then
-		if isFormal then
-			pants.PantsTemplate = (genderFolderName == "Women") and FORMAL_WOMEN_STOCKINGS_ID or FORMAL_MEN_PANTS_ID
-		else
-			pants.PantsTemplate = DIARY_PANTS_ID
-		end
+local function applyUniformAppearance(clone, gender, isFormal)
+	local pants = clone:FindFirstChildOfClass("Pants")
+	if not pants then
+		return
+	end
+
+	if isFormal then
+		pants.PantsTemplate = (gender == "Women") and FORMAL_WOMEN_STOCKINGS_ID or FORMAL_MEN_PANTS_ID
+	else
+		pants.PantsTemplate = DIARY_PANTS_ID
 	end
 end
 
 local function applyBodyColors(clone)
-	local bodyColors = clone:FindFirstChild("Body Colors")
-	if not (bodyColors and bodyColors:IsA("BodyColors")) then
+	local bc = clone:FindFirstChildOfClass("BodyColors")
+	if not bc then
 		return
 	end
 
-	local skinTone = SKIN_TONES[rng:NextInteger(1, #SKIN_TONES)]
-	bodyColors.HeadColor3 = skinTone
-	bodyColors.LeftArmColor3 = skinTone
-	bodyColors.RightArmColor3 = skinTone
-	bodyColors.LeftLegColor3 = skinTone
-	bodyColors.RightLegColor3 = skinTone
-	bodyColors.TorsoColor3 = TORSO_COLOR
+	local tone = varyColor(getWeightedSkinTone())
+
+	bc.HeadColor3 = tone
+	bc.LeftArmColor3 = tone
+	bc.RightArmColor3 = tone
+	bc.LeftLegColor3 = tone
+	bc.RightLegColor3 = tone
+	bc.TorsoColor3 = TORSO_COLOR
 end
 
+-- 🎬 Animaciones
+local function applyAnimationPack(npc, pack)
+	local animate = npc:FindFirstChild("Animate")
+	if not animate or not pack then
+		return
+	end
+
+	if animate:FindFirstChild("walk") then
+		animate.walk.WalkAnim.AnimationId = pack.walk
+	end
+	if animate:FindFirstChild("run") then
+		animate.run.RunAnim.AnimationId = pack.run
+	end
+	if animate:FindFirstChild("jump") then
+		animate.jump.JumpAnim.AnimationId = pack.jump
+	end
+	if animate:FindFirstChild("fall") then
+		animate.fall.FallAnim.AnimationId = pack.fall
+	end
+	if animate:FindFirstChild("climb") then
+		animate.climb.ClimbAnim.AnimationId = pack.climb
+	end
+	if animate:FindFirstChild("swim") then
+		animate.swim.Swim.AnimationId = pack.swim
+	end
+	if animate:FindFirstChild("swimidle") then
+		animate.swimidle.SwimIdle.AnimationId = pack.swimidle
+	end
+
+	if animate:FindFirstChild("idle") then
+		local idle = animate.idle
+		if idle:FindFirstChild("Animation1") then
+			idle.Animation1.AnimationId = pack.idle[1]
+		end
+		if idle:FindFirstChild("Animation2") then
+			idle.Animation2.AnimationId = pack.idle[2]
+		end
+	end
+end
+
+-- 🎭 FACE CONTROLS
+
+local function getFaceControls(npc)
+	local head = npc:FindFirstChild("Head")
+	if not head then
+		return nil
+	end
+	return head:FindFirstChild("FaceControls")
+end
+
+local function applyFace(face, data)
+	for prop, value in pairs(data) do
+		if face[prop] ~= nil then
+			face[prop] = value
+		end
+	end
+end
+
+local EMOTIONS = {
+
+	Neutral = function(face)
+		applyFace(face, {
+			JawDrop = 0,
+			LipsTogether = 1,
+		})
+	end,
+
+	Nervous = function(face)
+		applyFace(face, {
+			LeftEyeUpperLidRaiser = 0.4,
+			RightEyeUpperLidRaiser = 0.4,
+			JawDrop = 0.2,
+			LipPresser = 0.3,
+		})
+	end,
+
+	Panic = function(face)
+		applyFace(face, {
+			LeftEyeUpperLidRaiser = 1,
+			RightEyeUpperLidRaiser = 1,
+			LeftInnerBrowRaiser = 1,
+			RightInnerBrowRaiser = 1,
+			JawDrop = 0.7,
+		})
+	end,
+
+	Stress = function(face)
+		applyFace(face, {
+			LeftBrowLowerer = 0.6,
+			RightBrowLowerer = 0.6,
+			LipPresser = 0.7,
+		})
+	end,
+
+	Determined = function(face)
+		applyFace(face, {
+			LipPresser = 0.8,
+			JawDrop = 0,
+		})
+	end,
+}
+
+local EMOTION_LIST = { "Neutral", "Nervous", "Panic", "Stress", "Determined" }
+
+local function applyRandomEmotion(npc)
+	local face = getFaceControls(npc)
+	if not face then
+		return
+	end
+
+	local emotion = EMOTIONS[EMOTION_LIST[rng:NextInteger(1, #EMOTION_LIST)]]
+	if emotion then
+		emotion(face)
+	end
+
+	-- micro movimiento de ojos
+	task.spawn(function()
+		while npc.Parent and face do
+			face.EyesLookLeft = rng:NextNumber(0, 0.5)
+			face.EyesLookRight = rng:NextNumber(0, 0.5)
+			face.EyesLookUp = rng:NextNumber(0, 0.3)
+			face.EyesLookDown = rng:NextNumber(0, 0.3)
+			task.wait(rng:NextNumber(1, 3))
+		end
+	end)
+end
+
+-- ─── NPC BUILDER ─────────────────────────────────────────────────────────
+
 local function buildRandomNPC()
-	local genderFolderName = (rng:NextNumber() < 0.5) and "Men" or "Women"
-	local genderFolder = npcsRoot:FindFirstChild(genderFolderName)
-	if not genderFolder then
+	local gender = (rng:NextNumber() < 0.5) and "Men" or "Women"
+	local folder = npcsRoot:FindFirstChild(gender)
+	if not folder then
 		return nil
 	end
 
-	local bodysFolder = genderFolder:FindFirstChild("Bodys")
-	local hairsFolder = genderFolder:FindFirstChild("Hairs")
-	local accessoriesFolder = genderFolder:FindFirstChild("Accesories")
-	if not (bodysFolder and hairsFolder and accessoriesFolder) then
+	local bodys = folder:FindFirstChild("Bodys")
+	local hairs = folder:FindFirstChild("Hairs")
+	local accs = folder:FindFirstChild("Accesories")
+	if not (bodys and hairs and accs) then
 		return nil
 	end
 
-	local bodyTemplate = pickRandomChild(bodysFolder)
-	local hairTemplate = pickRandomChild(hairsFolder)
+	local bodyTemplate = pickRandomChild(bodys)
 	if not (bodyTemplate and bodyTemplate:IsA("Model")) then
 		return nil
 	end
 
 	local clone = bodyTemplate:Clone()
+
+	for _, p in ipairs(clone:GetDescendants()) do
+		if p:IsA("BasePart") then
+			p.Anchored = false
+			p.CanCollide = false
+		end
+	end
+
+	local genderPacks = PACKS_BY_GENDER[gender]
+	if genderPacks and #genderPacks > 0 then
+		applyAnimationPack(clone, genderPacks[rng:NextInteger(1, #genderPacks)])
+	end
+
+	applyRandomEmotion(clone)
+
+	tryAddAccessory(clone, pickRandomChild(hairs))
+
+	local glassesName = (gender == "Women") and WOMAN_GLASSES_NAME or MAN_GLASSES_NAME
+	local glasses = accs:FindFirstChild(glassesName)
+	if glasses and rng:NextNumber() < 0.35 then
+		tryAddAccessory(clone, glasses)
+	end
+
 	local isFormal = rng:NextNumber() < 0.5
-	local glassesName = (genderFolderName == "Women") and WOMAN_GLASSES_NAME or MAN_GLASSES_NAME
-	local glassesTemplate = accessoriesFolder:FindFirstChild(glassesName)
-	local skirtTemplate = accessoriesFolder:FindFirstChild(SKIRT_ACCESSORY_NAME)
-
-	if hairTemplate and hairTemplate:IsA("Accessory") then
-		tryAddAccessory(clone, hairTemplate)
-	end
-
-	if glassesTemplate and glassesTemplate:IsA("Accessory") and rng:NextNumber() < 0.35 then
-		tryAddAccessory(clone, glassesTemplate)
-	end
-
-	if genderFolderName == "Women" and isFormal and skirtTemplate and skirtTemplate:IsA("Accessory") then
-		tryAddAccessory(clone, skirtTemplate)
-	end
-
-	applyUniformAppearance(clone, genderFolderName, isFormal)
+	applyUniformAppearance(clone, gender, isFormal)
 	applyBodyColors(clone)
+
+	local skirt = accs:FindFirstChild(SKIRT_ACCESSORY_NAME)
+	if gender == "Women" and isFormal and skirt then
+		tryAddAccessory(clone, skirt)
+	end
+
 	return clone
 end
 
--- Returns a random unit offset clamped to a horizontal radius.
+-- ─── SPAWN SYSTEM ────────────────────────────────────────────────────────
+
 local function randomOffset(radius)
-	if not radius or radius <= 0 then return Vector3.zero end
+	if not radius or radius <= 0 then
+		return Vector3.zero
+	end
 	local angle = rng:NextNumber(0, math.pi * 2)
-	local dist  = rng:NextNumber(0, radius)
+	local dist = rng:NextNumber(0, radius)
 	return Vector3.new(math.cos(angle) * dist, 0, math.sin(angle) * dist)
 end
 
--- Collects all BasePart spawn points for a building.
--- Falls back to the world origin (with a warning) if none are found.
 local function getSpawnPoints(buildingName)
-	local spawnsRoot = workspace:FindFirstChild(SPAWNS_FOLDER)
-	if not spawnsRoot then
-		warn("[NPCSpawner] Workspace." .. SPAWNS_FOLDER .. " not found. NPCs will spawn at origin.")
-		return { CFrame = CFrame.new(0, 5, 0) }  -- dummy fallback
-	end
-	local buildingFolder = spawnsRoot:FindFirstChild(buildingName)
-	if not buildingFolder then
-		warn("[NPCSpawner] No spawn folder for building: " .. buildingName)
+	local root = workspace:FindFirstChild(SPAWNS_FOLDER)
+	if not root then
 		return { CFrame = CFrame.new(0, 5, 0) }
 	end
-	local points = {}
-	for _, v in ipairs(buildingFolder:GetDescendants()) do
+
+	local folder = root:FindFirstChild(buildingName)
+	if not folder then
+		return { CFrame = CFrame.new(0, 5, 0) }
+	end
+
+	local pts = {}
+	for _, v in ipairs(folder:GetDescendants()) do
 		if v:IsA("BasePart") then
-			table.insert(points, v)
+			table.insert(pts, v)
 		end
 	end
-	if #points == 0 then
-		warn("[NPCSpawner] Spawn folder for '" .. buildingName .. "' has no BaseParts.")
-		table.insert(points, { CFrame = CFrame.new(0, 5, 0) })
+
+	if #pts == 0 then
+		table.insert(pts, { CFrame = CFrame.new(0, 5, 0) })
 	end
-	return points
+
+	return pts
 end
 
--- Returns (or creates) the workspace container for a group's NPCs.
-local function getOrCreateGroup(groupKey)
-	local container = workspace:FindFirstChild(NPC_FOLDER_NAME)
-	if not container then
-		container = Instance.new("Folder")
-		container.Name = NPC_FOLDER_NAME
-		container.Parent = workspace
+local function getOrCreateGroup(key)
+	local root = workspace:FindFirstChild(NPC_FOLDER_NAME)
+	if not root then
+		root = Instance.new("Folder", workspace)
+		root.Name = NPC_FOLDER_NAME
 	end
-	local group = container:FindFirstChild(groupKey)
-	if not group then
-		group = Instance.new("Folder")
-		group.Name = groupKey
-		group.Parent = container
+
+	local g = root:FindFirstChild(key)
+	if not g then
+		g = Instance.new("Folder", root)
+		g.Name = key
 	end
-	return group
+
+	return g
 end
 
--- ─── Public API ───────────────────────────────────────────────────────────────
+-- ─── API ─────────────────────────────────────────────────────────────────
 
--- Spawns `count` NPCs for the given building/event combination.
--- config = { buildingName, eventType, count, walkSpeed?, maxStartDelay?, offsetRadius? }
 function NPCSpawner.spawn(config)
-	assert(type(config) == "table", "[NPCSpawner] spawn() expects a config table.")
-	assert(config.buildingName, "[NPCSpawner] buildingName is required.")
-	assert(config.eventType,    "[NPCSpawner] eventType is required.")
+	local building = config.buildingName
+	local event = config.eventType
+	local count = config.count or 100
+	local speed = config.walkSpeed or 10
+	local delayMax = config.maxStartDelay or 8
+	local radius = config.offsetRadius or 2.5
 
-	local buildingName  = config.buildingName
-	local eventType     = config.eventType
-	local count         = config.count         or 100
-	local walkSpeed     = config.walkSpeed      or 10
-	local maxStartDelay = config.maxStartDelay  or 8
-	local offsetRadius  = config.offsetRadius   or 2.5
-
-	local groupKey = buildingName .. "_" .. eventType
-
-	-- Prevent duplicate spawns for the same group.
-	if activeGroups[groupKey] then
-		warn("[NPCSpawner] Group '" .. groupKey .. "' is already active. Despawn first.")
+	local key = building .. "_" .. event
+	if activeGroups[key] then
 		return
 	end
 
-	local template = ReplicatedStorage:FindFirstChild(TEMPLATE_NAME)
-	if not template then
-		warn("[NPCSpawner] ReplicatedStorage." .. TEMPLATE_NAME .. " not found. Using ReplicatedStorage.NPCs only.")
-	end
+	local spawns = getSpawnPoints(building)
+	local group = getOrCreateGroup(key)
+	activeGroups[key] = group
 
-	local spawnPoints = getSpawnPoints(buildingName)
-	local group       = getOrCreateGroup(groupKey)
-	activeGroups[groupKey] = group
-
-	print(string.format(
-		"[NPCSpawner] Spawning %d NPCs — %s / %s | batch=%d every %.2fs",
-		count, buildingName, eventType, BATCH_SIZE, BATCH_INTERVAL
-	))
-
-	-- Spawn in batches on a separate thread so the caller doesn't block.
 	task.spawn(function()
 		local spawned = 0
 
 		while spawned < count do
-			-- Check group wasn't despawned mid-spawn.
-			if not activeGroups[groupKey] then
-				print("[NPCSpawner] Spawn cancelled mid-batch for: " .. groupKey)
+			if not activeGroups[key] then
 				return
 			end
 
-			-- Clone a batch.
 			for i = 1, BATCH_SIZE do
-				if spawned >= count then break end
+				if spawned >= count then
+					break
+				end
 				spawned += 1
 
-				local clone = buildRandomNPC()
-				if not clone and template then
-					clone = template:Clone()
-				end
-				if not clone then
-					warn("[NPCSpawner] Could not build random NPC and no fallback template exists.")
+				local npc = buildRandomNPC()
+				if not npc then
 					continue
 				end
-				clone.Name = buildingName .. "_NPC_" .. spawned
 
-				-- Pick a random spawn point from the pool.
-				local spawnPart = spawnPoints[rng:NextInteger(1, #spawnPoints)]
-				local spawnCF   = spawnPart:IsA("BasePart") and spawnPart.CFrame
-				               or spawnPart.CFrame  -- fallback dummy
+				local sp = spawns[rng:NextInteger(1, #spawns)]
+				local cf = sp:IsA("BasePart") and sp.CFrame or sp.CFrame
 
-				-- Place NPC at spawn position with a small random offset.
-				local spawnOffset = randomOffset(offsetRadius)
-				clone:PivotTo(spawnCF + Vector3.new(spawnOffset.X, 0, spawnOffset.Z))
+				npc:PivotTo(cf + randomOffset(radius))
 
-				-- Set attributes the follower script reads.
-				clone:SetAttribute("BuildingName",   buildingName)
-				clone:SetAttribute("EventType",      eventType)
-				clone:SetAttribute("StartDelay",     rng:NextNumber(0, maxStartDelay))
-				clone:SetAttribute("PositionOffset", randomOffset(offsetRadius))
-				clone:SetAttribute("PathingStarted", false)
+				npc:SetAttribute("BuildingName", building)
+				npc:SetAttribute("EventType", event)
+				npc:SetAttribute("StartDelay", rng:NextNumber(0, delayMax))
+				npc:SetAttribute("PathingStarted", false)
 
-				local h = clone:FindFirstChildOfClass("Humanoid")
-				if h then h.WalkSpeed = walkSpeed end
+				local h = npc:FindFirstChildOfClass("Humanoid")
+				if h then
+					h.WalkSpeed = speed
+				end
 
-				clone.Parent = group
-				NPCFollowerController.activate(clone)
+				npc.Parent = group
+				NPCFollowerController.activate(npc)
 			end
 
 			task.wait(BATCH_INTERVAL)
 		end
-
-		print(string.format("[NPCSpawner] Done spawning %d NPCs for %s.", spawned, groupKey))
 	end)
 end
 
--- Removes all NPCs for a given building/event combination.
-function NPCSpawner.despawn(buildingName, eventType)
-	local groupKey = buildingName .. "_" .. eventType
-	local group = activeGroups[groupKey]
-	if not group then
-		warn("[NPCSpawner] No active group found for: " .. groupKey)
+function NPCSpawner.despawn(building, event)
+	local key = building .. "_" .. event
+	local g = activeGroups[key]
+	if not g then
 		return
 	end
 
-	-- Remove from tracking first so any in-flight spawn task stops.
-	activeGroups[groupKey] = nil
-
-	-- Destroy in batches to avoid a single-frame spike on 2500 Destroys.
-	local children = group:GetChildren()
-	local removed  = 0
+	activeGroups[key] = nil
 
 	task.spawn(function()
-		for i, npc in ipairs(children) do
-			if npc and npc.Parent then
-				npc:Destroy()
-				removed += 1
-			end
-			if i % BATCH_SIZE == 0 then
-				task.wait(BATCH_INTERVAL)
-			end
+		for _, npc in ipairs(g:GetChildren()) do
+			npc:Destroy()
 		end
-		if group and group.Parent then group:Destroy() end
-		print(string.format("[NPCSpawner] Despawned %d NPCs for %s.", removed, groupKey))
+		g:Destroy()
 	end)
 end
 
--- Returns the number of currently active NPCs for a group (useful for debugging).
-function NPCSpawner.getCount(buildingName, eventType)
-	local groupKey = buildingName .. "_" .. eventType
-	local group = activeGroups[groupKey]
-	if not group then return 0 end
-	return #group:GetChildren()
+function NPCSpawner.getCount(building, event)
+	local g = activeGroups[building .. "_" .. event]
+	return g and #g:GetChildren() or 0
 end
-
--- ─── Return module ────────────────────────────────────────────────────────────
 
 return NPCSpawner
