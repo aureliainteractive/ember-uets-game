@@ -5,6 +5,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local highlightTemplate = ReplicatedStorage:WaitForChild("HighlightTemplate")
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 local spawnpointsFolder = workspace:WaitForChild("Spawnpoints")
 local waypointsFolder = workspace:WaitForChild("Waypoints")
 local refugeesFolder = workspace:WaitForChild("Refugees")
@@ -28,12 +29,12 @@ end
 function NavigationUtils.teleportToSpawn(player, simType, locationName)
 	local locationFolder = spawnpointsFolder:FindFirstChild(locationName)
 	if not locationFolder then
-		warn(string.format("[SimController] Spawnpoints: ubicacion '%s' no encontrada.", locationName))
+		Logger.warn("System", string.format("Spawn location not found: %s", locationName))
 		return false
 	end
 	local simFolder = locationFolder:FindFirstChild(simType)
 	if not simFolder then
-		warn(string.format("[SimController] Spawnpoints: tipo '%s' no encontrado en '%s'.", simType, locationName))
+		Logger.warn("System", string.format("Spawn simulation type not found: %s in %s", simType, locationName))
 		return false
 	end
 	local points = {}
@@ -43,7 +44,7 @@ function NavigationUtils.teleportToSpawn(player, simType, locationName)
 		end
 	end
 	if #points == 0 then
-		warn(string.format("[SimController] Spawnpoints: sin puntos en '%s/%s'.", locationName, simType))
+		Logger.warn("System", string.format("No spawn points configured for %s/%s", locationName, simType))
 		return false
 	end
 	return NavigationUtils.teleportPlayer(player, points[math.random(1, #points)])
@@ -52,7 +53,7 @@ end
 -- Teleports a player to the closest spawnpoint relative to an origin part.
 function NavigationUtils.teleportToClosestSpawn(player, simType, locationName, originPart)
 	if not originPart or not originPart:IsA("BasePart") then
-		warn("[SimController] Spawn más cercano: origin inválido. Usando spawn aleatorio.")
+		Logger.warn("System", "Closest spawn request received with invalid origin; using random spawn")
 		return NavigationUtils.teleportToSpawn(player, simType, locationName)
 	end
 	local locationFolder = spawnpointsFolder:FindFirstChild(locationName)
@@ -84,7 +85,7 @@ function NavigationUtils.teleportToClosestSpawn(player, simType, locationName, o
 		end
 	end
 
-	print(string.format("[SimController] Spawn seleccionado a %.1f studs del origen del fuego.", closestDist))
+	Logger.debug("System", string.format("Closest spawn selected at %.1f studs from origin", closestDist))
 	return NavigationUtils.teleportPlayer(player, closest)
 end
 
@@ -92,17 +93,17 @@ end
 function NavigationUtils.getWaypoint(locationName, simType, number)
 	local locationFolder = waypointsFolder:FindFirstChild(locationName)
 	if not locationFolder then
-		warn(string.format("[SimController] Waypoints: ubicacion '%s' no encontrada.", locationName))
+		Logger.warn("System", string.format("Waypoint location not found: %s", locationName))
 		return nil
 	end
 	local simFolder = locationFolder:FindFirstChild(simType)
 	if not simFolder then
-		warn(string.format("[SimController] Waypoints: tipo '%s' no encontrado en '%s'.", simType, locationName))
+		Logger.warn("System", string.format("Waypoint simulation type not found: %s in %s", simType, locationName))
 		return nil
 	end
 	local wp = simFolder:FindFirstChild("Waypoint" .. number)
 	if not wp or not wp:IsA("BasePart") then
-		warn(string.format("[SimController] Waypoints: Waypoint%d no encontrado.", number))
+		Logger.warn("System", string.format("Waypoint not found: Waypoint%d", number))
 		return nil
 	end
 	return wp
@@ -112,12 +113,12 @@ end
 function NavigationUtils.getRefuges(locationName, simType)
 	local locationFolder = refugeesFolder:FindFirstChild(locationName)
 	if not locationFolder then
-		warn(string.format("[SimController] Refugees: ubicacion '%s' no encontrada.", locationName))
+		Logger.warn("System", string.format("Refuge location not found: %s", locationName))
 		return {}
 	end
 	local simFolder = locationFolder:FindFirstChild(simType)
 	if not simFolder then
-		warn(string.format("[SimController] Refugees: tipo '%s' no encontrado en '%s'.", simType, locationName))
+		Logger.warn("System", string.format("Refuge simulation type not found: %s in %s", simType, locationName))
 		return {}
 	end
 	local refuges = {}

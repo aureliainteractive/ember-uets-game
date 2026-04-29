@@ -6,6 +6,8 @@
 --            NPCWaypointFollower.start(npcModel)
 
 local NPCWaypointFollower = {}
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 
 -- ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -109,7 +111,7 @@ local function rebuildDoorCache()
 	end
 
 	doorCacheLastUpdate = tick()
-	print("[NPCWaypointFollower] Door cache rebuilt with " .. #doorCache .. " doors")
+	Logger.debug("NPC", string.format("Door cache rebuilt with %d entries", #doorCache))
 end
 
 -- Build cache on first load (slightly delayed to allow initial setup)
@@ -148,7 +150,7 @@ end)
 
 function NPCWaypointFollower.start(npcModel)
 	if not npcModel or not npcModel:IsA("Model") then
-		warn("[NPCWaypointFollower] start() expects a Model.")
+		Logger.warn("NPC", "start() expects a Model instance")
 		return
 	end
 
@@ -158,7 +160,7 @@ function NPCWaypointFollower.start(npcModel)
 	local started = false
 
 	if not humanoid or not rootPart then
-		warn("[NPCWaypointFollower] Missing Humanoid or HumanoidRootPart in: " .. npcModel.Name)
+		Logger.warn("NPC", "Missing Humanoid or HumanoidRootPart in " .. npcModel.Name)
 		return
 	end
 
@@ -321,14 +323,9 @@ function NPCWaypointFollower.start(npcModel)
 				doorDebounces[closestDoor] = {}
 			end
 			doorDebounces[closestDoor].lastTriggeredTime = tick()
-			print(
-				"[NPCWaypointFollower] "
-					.. npcModel.Name
-					.. " opening door: "
-					.. closestDoor.Name
-					.. " (distance: "
-					.. tostring(math.floor(closestDistance))
-					.. ")"
+			Logger.debug(
+				"NPC",
+				string.format("%s requested door open: %s (distance %d)", npcModel.Name, closestDoor.Name, math.floor(closestDistance))
 			)
 			closestOpenDoorEvent:Fire()
 		end
@@ -344,11 +341,11 @@ function NPCWaypointFollower.start(npcModel)
 
 		local legacy = workspace:FindFirstChild("Waypoints")
 		if legacy then
-			warn("[NPCWaypointFollower] Using legacy root Workspace.Waypoints (NPC_Waypoints not found).")
+			Logger.warn("NPC", "Using legacy waypoint root Workspace.Waypoints")
 			return legacy
 		end
 
-		warn("[NPCWaypointFollower] Neither Workspace.NPC_Waypoints nor Workspace.Waypoints exists.")
+		Logger.warn("NPC", "No waypoint root found (NPC_Waypoints or Waypoints)")
 		return nil
 	end
 
@@ -364,13 +361,13 @@ function NPCWaypointFollower.start(npcModel)
 
 		local buildingFolder = root:FindFirstChild(buildingName)
 		if not buildingFolder then
-			warn("[NPCWaypointFollower] Building folder not found: " .. tostring(buildingName))
+			Logger.warn("NPC", "Waypoint building folder not found: " .. tostring(buildingName))
 			return {}
 		end
 
 		local eventFolder = buildingFolder:FindFirstChild(eventType)
 		if not eventFolder then
-			warn("[NPCWaypointFollower] Event folder not found: " .. tostring(eventType))
+			Logger.warn("NPC", "Waypoint event folder not found: " .. tostring(eventType))
 			return {}
 		end
 
@@ -389,9 +386,10 @@ function NPCWaypointFollower.start(npcModel)
 		end)
 
 		if #list == 0 then
-			warn(
+			Logger.warn(
+				"NPC",
 				string.format(
-					"[NPCWaypointFollower] No waypoint parts found in '%s/%s'. Expected names like Waypoint1, Waypoint2...",
+					"No waypoint parts found in %s/%s; expected names like Waypoint1, Waypoint2",
 					buildingName,
 					eventType
 				)
@@ -505,7 +503,7 @@ function NPCWaypointFollower.start(npcModel)
 		local rawOffset = npcModel:GetAttribute("PositionOffset")
 
 		if not buildingName or not eventType then
-			warn("[NPCWaypointFollower] BuildingName or EventType missing on: " .. npcModel.Name)
+			Logger.warn("NPC", "Missing BuildingName or EventType on " .. npcModel.Name)
 			return
 		end
 
@@ -554,7 +552,7 @@ function NPCWaypointFollower.start(npcModel)
 					return
 				end
 			else
-				warn("[NPCWaypointFollower] Unknown WaypointType '" .. tostring(wpType) .. "' — treating as Transit.")
+				Logger.warn("NPC", "Unknown WaypointType " .. tostring(wpType) .. "; using Transit behavior")
 				handleTransit(wp, offset)
 			end
 		end

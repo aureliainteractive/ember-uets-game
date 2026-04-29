@@ -2,8 +2,10 @@
 -- Purpose: Central coordinator for all door instances in the game.
 -- Dependencies: HingeDoor, SlidingDoor
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HingeDoor = require(script.Parent.modules.doors.HingeDoor)
 local SlidingDoor = require(script.Parent.modules.doors.SlidingDoor)
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 
 local initializedDoors = {}
 
@@ -13,12 +15,12 @@ local function resolveDoorType(model)
 	local hasSlidePivot = model:FindFirstChild("SlidePivot") ~= nil
 
 	if declaredType == "Hinge" and hasSlidePivot and not hasHinge then
-		warn("[DoorSystem] DoorType mismatch on " .. model:GetFullName() .. " — using Sliding")
+		Logger.warn("Door", "DoorType mismatch; using Sliding: " .. model:GetFullName())
 		return "Sliding"
 	end
 
 	if declaredType == "Sliding" and hasHinge and not hasSlidePivot then
-		warn("[DoorSystem] DoorType mismatch on " .. model:GetFullName() .. " — using Hinge")
+		Logger.warn("Door", "DoorType mismatch; using Hinge: " .. model:GetFullName())
 		return "Hinge"
 	end
 
@@ -37,7 +39,7 @@ local function initDoorModel(model)
 	local doorType = resolveDoorType(model)
 	if typeof(doorType) ~= "string" then
 		if model:FindFirstChild("ToggleDoor") then
-			warn("[DoorSystem] Unknown DoorType on " .. model:GetFullName() .. " — skipped")
+			Logger.warn("Door", "Unknown DoorType; initialization skipped: " .. model:GetFullName())
 		end
 		return
 	end
@@ -46,7 +48,7 @@ local function initDoorModel(model)
 		local ok = HingeDoor.init(model)
 		if ok then
 			initializedDoors[model] = true
-			print("[DoorSystem] Initialized: " .. model:GetFullName() .. " (Hinge)")
+			Logger.info("Door", "Initialized hinge door: " .. model:GetFullName())
 		end
 		return
 	end
@@ -55,12 +57,12 @@ local function initDoorModel(model)
 		local ok = SlidingDoor.init(model)
 		if ok then
 			initializedDoors[model] = true
-			print("[DoorSystem] Initialized: " .. model:GetFullName() .. " (Sliding)")
+			Logger.info("Door", "Initialized sliding door: " .. model:GetFullName())
 		end
 		return
 	end
 
-	warn("[DoorSystem] Unknown DoorType on " .. model:GetFullName() .. " — skipped")
+	Logger.warn("Door", "Unknown DoorType; initialization skipped: " .. model:GetFullName())
 end
 
 for _, descendant in ipairs(workspace:GetDescendants()) do

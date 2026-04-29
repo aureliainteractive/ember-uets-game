@@ -29,7 +29,6 @@ local function fireToggleFromHand(hand)
 	while inst do
 		local toggle = inst:FindFirstChild("ToggleDoor")
 		if toggle and toggle:IsA("RemoteEvent") then
-			print("📤 FireServer a ToggleDoor:", toggle:GetFullName())
 			toggle:FireServer()
 			return
 		end

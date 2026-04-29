@@ -9,6 +9,7 @@ local HUDContainer = playerGui:WaitForChild("HUD_VR")
 
 local ControllerUI_HUD = ReplicatedStorage:WaitForChild("ControllerUI_HUD")
 local HUDUpdate = ReplicatedStorage:WaitForChild("HUDUpdate")
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 
 local CONFIG = {
 	AnimationDuration = 0.42,
@@ -180,7 +181,7 @@ ControllerUI_HUD.OnClientEvent:Connect(function(action)
 	elseif action == "Hide" then
 		hideHUD()
 	else
-		warn("[HUDHandler] Acción desconocida:", action)
+		Logger.warn("UI", string.format("Unknown HUD action received: %s", tostring(action)))
 	end
 end)
 

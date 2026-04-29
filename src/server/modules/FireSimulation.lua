@@ -9,6 +9,7 @@ local NavigationUtils = require(script.Parent.NavigationUtils)
 local ActuatorService = require(script.Parent.ActuatorService)
 local ResultsSystem = require(script.Parent.ResultsSystem)
 local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 
 local RNG = Random.new()
 
@@ -70,7 +71,7 @@ local FireSimulation = {}
 local function getBuildingModel(locationName)
 	local building = workspace:FindFirstChild(locationName)
 	if not building then
-		warn(string.format("[SimController] Edificio '%s' no encontrado en workspace.", locationName))
+		Logger.warn("System", string.format("Building model not found in workspace: %s", locationName))
 	end
 	return building
 end
@@ -147,7 +148,7 @@ local function resolveParticleRoot()
 	for _, childName in ipairs(PARTICLE_PRESETS_ROOT) do
 		node = node:FindFirstChild(childName)
 		if not node then
-			warn("[FireSimulation] Particle presets root not found. Check PARTICLE_PRESETS_ROOT.")
+			Logger.warn("System", "Fire particle presets root not found")
 			particleRootCache = nil
 			return nil
 		end
@@ -169,7 +170,7 @@ local function getPresetForPart(part)
 
 	if not preset and not particlePresetWarnings[presetName] then
 		particlePresetWarnings[presetName] = true
-		warn(string.format("[FireSimulation] Particle preset '%s' not found under configured root.", presetName))
+		Logger.warn("System", string.format("Fire particle preset missing: %s", presetName))
 	end
 
 	return preset
@@ -218,7 +219,7 @@ local function applyCustomParticles(part, difficulty)
 	end
 
 	if not foundEmitterTemplate then
-		warn("[FireSimulation] Selected preset has no ParticleEmitters.")
+		Logger.warn("System", "Selected fire particle preset has no ParticleEmitter")
 		return false
 	end
 
@@ -447,7 +448,7 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 	local seedPart = FireSimulation.pickFireOrigin(buildingParts)
 
 	if not seedPart then
-		warn(string.format("[SimController] Incendio: no se pudo determinar origen en '%s'.", locationName))
+		Logger.warn("System", string.format("Fire origin could not be determined for location %s", locationName))
 		services.setSimulationActive("Fire", locationName, false)
 		services.setPowerMode("NORMAL")
 		DialogService.send(player, "Error", "No se pudo iniciar el simulacro. Intente nuevamente.")
@@ -480,14 +481,7 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 			session.simulationEnded = true
 		end
 	end)
-	print(
-		string.format(
-			"[SimController] Incendio iniciado: %s — %s — Dificultad %d",
-			player.Name,
-			locationName,
-			difficulty
-		)
-	)
+	Logger.info("System", string.format("Fire simulation started for %s at %s (difficulty %d)", player.Name, locationName, difficulty))
 	services.HUDService.startTicker(player, session, services)
 
 	local function recordStep()
@@ -560,7 +554,7 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 
 						local wp2 = NavigationUtils.getWaypoint(locationName, "FireSimulation", 2)
 						if not wp2 then
-							warn("[SimController] Incendio: Waypoint2 no encontrado.")
+							Logger.warn("System", "FireSimulation Waypoint2 is missing")
 							cleanup()
 							return
 						end
@@ -581,7 +575,7 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 
 							local wp3 = NavigationUtils.getWaypoint(locationName, "FireSimulation", 3)
 							if not wp3 then
-								warn("[SimController] Incendio: Waypoint3 no encontrado.")
+								Logger.warn("System", "FireSimulation Waypoint3 is missing")
 								cleanup()
 								return
 							end
@@ -607,7 +601,7 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 
 								local wp4 = NavigationUtils.getWaypoint(locationName, "FireSimulation", 4)
 								if not wp4 then
-									warn("[SimController] Incendio: Waypoint4 no encontrado.")
+									Logger.warn("System", "FireSimulation Waypoint4 is missing")
 									cleanup()
 									return
 								end
@@ -657,12 +651,9 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 
 	task.delay(services.SIMULATION_GLOBAL_TIMEOUT, function()
 		if state.playerSimulationData[player.UserId] then
-			warn(
-				string.format(
-					"[SimController] Incendio: timeout de %ds alcanzado para %s.",
-					services.SIMULATION_GLOBAL_TIMEOUT,
-					player.Name
-				)
+			Logger.warn(
+				"System",
+				string.format("Fire simulation global timeout reached (%ds) for %s", services.SIMULATION_GLOBAL_TIMEOUT, player.Name)
 			)
 			cleanup()
 			DialogService.send(player, "Warning", "El simulacro ha finalizado por tiempo limite.")

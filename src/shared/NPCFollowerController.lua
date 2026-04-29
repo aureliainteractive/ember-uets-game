@@ -2,6 +2,9 @@
 -- Purpose: Centralize explicit activation of NPC pathing scripts.
 -- Usage  : NPCFollowerController.activate(npcModel)
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
+
 local START_EVENT_NAME = "StartPathing"
 
 local NPCFollowerController = {}
@@ -13,9 +16,10 @@ local function getOrCreateStartEvent(npcModel)
 	end
 
 	if startEvent and not startEvent:IsA("BindableEvent") then
-		warn(
+		Logger.warn(
+			"NPC",
 			string.format(
-				"[NPCFollowerController] %s.%s exists but is %s. Replacing with BindableEvent.",
+				"%s.%s exists with invalid class %s; replacing with BindableEvent",
 				npcModel:GetFullName(),
 				START_EVENT_NAME,
 				startEvent.ClassName
@@ -32,7 +36,7 @@ end
 
 function NPCFollowerController.activate(npcModel)
 	if typeof(npcModel) ~= "Instance" or not npcModel:IsA("Model") then
-		warn("[NPCFollowerController] activate() expects a Model.")
+		Logger.warn("NPC", "activate() expects a Model instance")
 		return false
 	end
 

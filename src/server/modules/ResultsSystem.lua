@@ -5,6 +5,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local NavigationUtils = require(script.Parent.NavigationUtils)
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 
 local showResultsEvent = ReplicatedStorage:WaitForChild("ShowResults")
 local returnToLobbyEvent = ReplicatedStorage:WaitForChild("ReturnToLobby")
@@ -101,7 +102,7 @@ end
 -- Returns nil with a warn if session data is incomplete.
 function ResultsSystem.compute(session, simType, locationName, difficulty)
 	if not session or not session.waypointTimes or #session.waypointTimes == 0 then
-		warn("[ResultsSystem] Session incompleta para compute().")
+		Logger.warn("System", "Results payload computation skipped due to incomplete session")
 		return nil
 	end
 
@@ -158,7 +159,7 @@ function ResultsSystem.show(player, session, simType, locationName, difficulty, 
 	local payload = ResultsSystem.compute(session, simType, locationName, difficulty)
 
 	if not payload then
-		warn("[ResultsSystem] No se pudo calcular resultados para " .. tostring(player.Name))
+		Logger.warn("System", "Results computation failed for player " .. tostring(player.Name))
 		NavigationUtils.teleportPlayer(player, mainLobbySpawn)
 		return
 	end
@@ -169,14 +170,9 @@ function ResultsSystem.show(player, session, simType, locationName, difficulty, 
 		showResultsEvent:FireClient(player, payload)
 	end)
 
-	print(
-		string.format(
-			"[ResultsSystem] Resultados enviados: %s | %s | %d pts | Rango %s",
-			player.Name,
-			simType,
-			payload.totalPoints,
-			payload.rank
-		)
+	Logger.info(
+		"System",
+		string.format("Results delivered: %s | %s | %d pts | rank %s", player.Name, simType, payload.totalPoints, payload.rank)
 	)
 end
 
@@ -189,7 +185,7 @@ end
 returnToLobbyEvent.OnServerEvent:Connect(function(player)
 	local mainLobbySpawn = workspace:WaitForChild("Spawnpoints"):WaitForChild("MainLobby")
 	NavigationUtils.teleportPlayer(player, mainLobbySpawn)
-	print("[ResultsSystem] " .. player.Name .. " regresó al lobby.")
+	Logger.info("System", string.format("Player returned to lobby: %s", player.Name))
 end)
 
 return ResultsSystem

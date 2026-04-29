@@ -3,6 +3,8 @@
 -- Dependencies: TweenService, RemoteEvent ToggleDoor, Model Attributes
 
 local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 
 local HingeDoor = {}
 local CLICK_DISTANCE = 12
@@ -10,7 +12,7 @@ local CLICK_DISTANCE = 12
 local function bindHandleClickDetector(doorModel, handleName, onToggle)
 	local handle = doorModel:FindFirstChild(handleName, true)
 	if not handle or not handle:IsA("BasePart") then
-		warn("[HingeDoor] Missing " .. handleName .. " BasePart on " .. doorModel:GetFullName())
+		Logger.warn("Door", "Missing handle part " .. handleName .. " on " .. doorModel:GetFullName())
 		return
 	end
 
@@ -38,17 +40,17 @@ function HingeDoor.init(doorModel)
 	local cooldown = doorModel:GetAttribute("Cooldown")
 
 	if typeof(openAngle) ~= "number" then
-		warn("[HingeDoor] Invalid or missing OpenAngle on " .. fullName)
+		Logger.warn("Door", "Invalid or missing OpenAngle on " .. fullName)
 		return false
 	end
 
 	if typeof(openTime) ~= "number" then
-		warn("[HingeDoor] Invalid or missing OpenTime on " .. fullName)
+		Logger.warn("Door", "Invalid or missing OpenTime on " .. fullName)
 		return false
 	end
 
 	if typeof(cooldown) ~= "number" then
-		warn("[HingeDoor] Invalid or missing Cooldown on " .. fullName)
+		Logger.warn("Door", "Invalid or missing Cooldown on " .. fullName)
 		return false
 	end
 
@@ -57,17 +59,17 @@ function HingeDoor.init(doorModel)
 	local toggleDoor = doorModel:FindFirstChild("ToggleDoor")
 
 	if not door or not door:IsA("BasePart") then
-		warn("[HingeDoor] Missing Door BasePart on " .. fullName)
+		Logger.warn("Door", "Missing door BasePart on " .. fullName)
 		return false
 	end
 
 	if not hinge or not hinge:IsA("BasePart") then
-		warn("[HingeDoor] Missing Hinge BasePart on " .. fullName)
+		Logger.warn("Door", "Missing hinge BasePart on " .. fullName)
 		return false
 	end
 
 	if not toggleDoor or not toggleDoor:IsA("RemoteEvent") then
-		warn("[HingeDoor] Missing ToggleDoor RemoteEvent on " .. fullName)
+		Logger.warn("Door", "Missing ToggleDoor RemoteEvent on " .. fullName)
 		return false
 	end
 

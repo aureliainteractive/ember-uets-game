@@ -4,6 +4,8 @@
 -- Dependencies: ScoringSystem
 
 local ScoringSystem = require(script.Parent.ScoringSystem)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 local activeTickers = {} -- keyed by player.UserId
 
 local HUDService = {}
@@ -11,7 +13,7 @@ local HUDService = {}
 -- Starts or restarts a per-player HUD ticker loop.
 function HUDService.startTicker(player, session, services)
 	if not player or not player.Parent then
-		warn("[HUDService] startTicker precondition failed: invalid player.")
+		Logger.warn("UI", "HUD ticker start rejected due to invalid player")
 		return
 	end
 
@@ -22,12 +24,12 @@ function HUDService.startTicker(player, session, services)
 		or session.maxTimes == nil
 		or session.stepNames == nil
 	then
-		warn("[HUDService] startTicker precondition failed: invalid session.")
+		Logger.warn("UI", "HUD ticker start rejected due to invalid session data")
 		return
 	end
 
 	if not services or services.SIMULATION_GLOBAL_TIMEOUT == nil or services.hudUpdateEvent == nil then
-		warn("[HUDService] startTicker precondition failed: invalid services.")
+		Logger.warn("UI", "HUD ticker start rejected due to invalid services payload")
 		return
 	end
 

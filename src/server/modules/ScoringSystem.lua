@@ -4,6 +4,8 @@
 
 local DialogService = require(script.Parent.DialogService)
 local NavigationUtils = require(script.Parent.NavigationUtils)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 
 local ScoringSystem = {}
 
@@ -40,7 +42,7 @@ end
 -- Shows final results dialog sequence and returns player to lobby.
 function ScoringSystem.showFinalResults(player, simData, simType, mainLobbySpawn)
 	if not simData.waypointTimes or #simData.waypointTimes == 0 then
-		warn(string.format("[SimController] Sin tiempos registrados para mostrar resultados (%s).", player.Name))
+		Logger.warn("System", string.format("Final results skipped because waypoint times are missing for %s", player.Name))
 		NavigationUtils.teleportPlayer(player, mainLobbySpawn)
 		return
 	end

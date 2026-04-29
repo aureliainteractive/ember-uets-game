@@ -3,7 +3,9 @@
 -- Dependencies: HttpService
 
 local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ActuatorConfig = require(script.Parent.ActuatorConfig)
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 
 local ActuatorService = {}
 
@@ -41,7 +43,7 @@ function ActuatorService.fire(player, actuatorName, value, duration, callback)
 	end)
 
 	if not ok then
-		warn(string.format("[SimController] Error al contactar actuador '%s': %s", actuatorName, tostring(result)))
+		Logger.error("Network", string.format("Actuator request failed for '%s': %s", actuatorName, tostring(result)))
 		if callback then
 			callback(false, "Error de conexion con el actuador")
 		end

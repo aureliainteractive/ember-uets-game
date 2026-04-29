@@ -8,6 +8,7 @@ local DialogService = require(script.Parent.DialogService)
 local NavigationUtils = require(script.Parent.NavigationUtils)
 local ResultsSystem = require(script.Parent.ResultsSystem)
 local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 
 local RNG = Random.new()
 
@@ -103,7 +104,7 @@ end
 local function getBuildingModel(locationName)
 	local building = workspace:FindFirstChild(locationName)
 	if not building then
-		warn(string.format("[SimController] Edificio '%s' no encontrado en workspace.", locationName))
+		Logger.warn("System", string.format("Building model not found in workspace: %s", locationName))
 	end
 	return building
 end
@@ -416,14 +417,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 	}
 
 	local session = state.playerSimulationData[player.UserId]
-	print(
-		string.format(
-			"[SimController] Sismo iniciado: %s — %s — Dificultad %d",
-			player.Name,
-			locationName,
-			difficulty
-		)
-	)
+	Logger.info("System", string.format("Earthquake simulation started for %s at %s (difficulty %d)", player.Name, locationName, difficulty))
 	services.HUDService.startTicker(player, session, services)
 
 	local function recordStep()
@@ -475,7 +469,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 		task.wait(2)
 		local wp2 = NavigationUtils.getWaypoint(locationName, "EarthquakeSimulation", 2)
 		if not wp2 then
-			warn("[SimController] Sismo: Waypoint2 no encontrado.")
+			Logger.warn("System", "EarthquakeSimulation Waypoint2 is missing")
 			services.setSimulationActive("Earthquake", locationName, false)
 			services.setPowerMode("NORMAL")
 			services.controllerHUDEvent:FireClient(player, "Hide")
@@ -500,7 +494,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 
 			local wp3 = NavigationUtils.getWaypoint(locationName, "EarthquakeSimulation", 3)
 			if not wp3 then
-				warn("[SimController] Sismo: Waypoint3 no encontrado.")
+				Logger.warn("System", "EarthquakeSimulation Waypoint3 is missing")
 				services.setSimulationActive("Earthquake", locationName, false)
 				services.setPowerMode("NORMAL")
 				services.controllerHUDEvent:FireClient(player, "Hide")

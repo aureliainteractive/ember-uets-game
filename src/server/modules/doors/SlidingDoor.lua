@@ -3,6 +3,8 @@
 -- Dependencies: TweenService, RemoteEvent ToggleDoor, Model Attributes
 
 local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 
 local SlidingDoor = {}
 local CLICK_DISTANCE = 12
@@ -10,7 +12,7 @@ local CLICK_DISTANCE = 12
 local function bindHandleClickDetector(doorModel, handleName, onToggle)
 	local handle = doorModel:FindFirstChild(handleName, true)
 	if not handle or not handle:IsA("BasePart") then
-		warn("[SlidingDoor] Missing " .. handleName .. " BasePart on " .. doorModel:GetFullName())
+		Logger.warn("Door", "Missing handle part " .. handleName .. " on " .. doorModel:GetFullName())
 		return
 	end
 
@@ -39,22 +41,22 @@ function SlidingDoor.init(doorModel)
 	local cooldown = doorModel:GetAttribute("Cooldown")
 
 	if typeof(slideDistance) ~= "number" then
-		warn("[SlidingDoor] Invalid or missing SlideDistance on " .. fullName)
+		Logger.warn("Door", "Invalid or missing SlideDistance on " .. fullName)
 		return false
 	end
 
 	if typeof(slideTime) ~= "number" then
-		warn("[SlidingDoor] Invalid or missing SlideTime on " .. fullName)
+		Logger.warn("Door", "Invalid or missing SlideTime on " .. fullName)
 		return false
 	end
 
 	if typeof(slideDirection) ~= "number" then
-		warn("[SlidingDoor] Invalid or missing SlideDirection on " .. fullName)
+		Logger.warn("Door", "Invalid or missing SlideDirection on " .. fullName)
 		return false
 	end
 
 	if typeof(cooldown) ~= "number" then
-		warn("[SlidingDoor] Invalid or missing Cooldown on " .. fullName)
+		Logger.warn("Door", "Invalid or missing Cooldown on " .. fullName)
 		return false
 	end
 
@@ -63,17 +65,17 @@ function SlidingDoor.init(doorModel)
 	local toggleDoor = doorModel:FindFirstChild("ToggleDoor")
 
 	if not door or not door:IsA("BasePart") then
-		warn("[SlidingDoor] Missing Door BasePart on " .. fullName)
+		Logger.warn("Door", "Missing door BasePart on " .. fullName)
 		return false
 	end
 
 	if not slidePivot or not slidePivot:IsA("BasePart") then
-		warn("[SlidingDoor] Missing SlidePivot BasePart on " .. fullName)
+		Logger.warn("Door", "Missing SlidePivot BasePart on " .. fullName)
 		return false
 	end
 
 	if not toggleDoor or not toggleDoor:IsA("RemoteEvent") then
-		warn("[SlidingDoor] Missing ToggleDoor RemoteEvent on " .. fullName)
+		Logger.warn("Door", "Missing ToggleDoor RemoteEvent on " .. fullName)
 		return false
 	end
 

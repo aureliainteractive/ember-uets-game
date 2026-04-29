@@ -10,6 +10,7 @@ local HUDService = require(modules:WaitForChild("HUDService"))
 local FireSimulation = require(modules:WaitForChild("FireSimulation"))
 local EarthquakeSimulation = require(modules:WaitForChild("EarthquakeSimulation"))
 local ArmedGroupsSimulation = require(modules:WaitForChild("ArmedGroupsSimulation"))
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 
 local simulationStartBindable = ReplicatedStorage:WaitForChild("SimulationStartBindable")
 local highlightPartBindable = ReplicatedStorage:WaitForChild("HighlightPartBindable")
@@ -54,9 +55,9 @@ end
 local function setPowerMode(mode)
 	if Lighting:GetAttribute("PowerMode") ~= nil then
 		Lighting:SetAttribute("PowerMode", mode)
-		print(string.format("[SimController] PowerMode -> %s", mode))
+		Logger.info("System", string.format("PowerMode updated to %s", mode))
 	else
-		warn("[SimController] El atributo 'PowerMode' no existe en Lighting.")
+		Logger.warn("System", "Lighting.PowerMode attribute is missing")
 	end
 end
 
@@ -88,7 +89,7 @@ local function startExploreSimulation(player, locationName, _difficulty)
 		audioPlayer.Volume = 0.6
 		audioPlayer:Play()
 	end
-	print(string.format("[SimController] Exploración iniciada: %s — %s", player.Name, locationName))
+	Logger.info("System", string.format("Explore simulation started for %s at %s", player.Name, locationName))
 end
 
 finishedTaskBindable.Event:Connect(function(player, taskName, callback)
@@ -156,14 +157,14 @@ Players.PlayerRemoving:Connect(function(player)
 	end
 	playerSimulationData[player.UserId] = nil
 	pendingSimulationStarts[player.UserId] = nil
-	print(string.format("[SimController] Datos de simulacion limpiados: %s.", player.Name))
+	Logger.debug("System", string.format("Simulation state cleared for %s", player.Name))
 end)
 
 local DIFFICULTY_MAP = { Easy = 1, Medium = 2, Hard = 3 }
 
 local function startSimulationNow(player, eventType, locationName, difficulty)
 	if not player or not player.Parent then
-		warn("[SimController] Inicio omitido: jugador invalido o desconectado.")
+		Logger.warn("System", "Start request skipped due to invalid player")
 		return
 	end
 
@@ -212,13 +213,13 @@ simulationLoadingReadyEvent.OnServerEvent:Connect(function(player)
 	end
 
 	pendingSimulationStarts[player.UserId] = nil
-	print(string.format("[SimController] Loading listo: %s. Iniciando simulacion...", player.Name))
+	Logger.info("System", string.format("Loading ready received for %s", player.Name))
 	startSimulationNow(player, pending.eventType, pending.locationName, pending.difficulty)
 end)
 
 simulationStartBindable.Event:Connect(function(player, eventType, locationName, difficultyStr)
 	if not player or not player.Parent then
-		warn("[SimController] Solicitud de simulacro con jugador invalido.")
+		Logger.warn("System", "Simulation request rejected due to invalid player")
 		return
 	end
 	if type(eventType) ~= "string" or type(locationName) ~= "string" or locationName == "" then
@@ -230,9 +231,10 @@ simulationStartBindable.Event:Connect(function(player, eventType, locationName, 
 		DialogService.send(player, "Error", "Nivel de dificultad desconocido: " .. tostring(difficultyStr))
 		return
 	end
-	print(
+	Logger.info(
+		"System",
 		string.format(
-			"[SimController] Solicitud: %s | %s | %s | %s",
+			"Simulation requested: %s | %s | %s | %s",
 			eventType,
 			locationName,
 			difficultyStr,
@@ -255,12 +257,7 @@ simulationStartBindable.Event:Connect(function(player, eventType, locationName, 
 		end
 		pendingSimulationStarts[player.UserId] = nil
 		if player and player.Parent then
-			warn(
-				string.format(
-					"[SimController] Timeout esperando loading listo para %s. Iniciando de todos modos.",
-					player.Name
-				)
-			)
+			Logger.warn("System", string.format("Loading ready timeout reached for %s", player.Name))
 			startSimulationNow(player, eventType, locationName, difficulty)
 		end
 	end)
@@ -268,4 +265,4 @@ end)
 
 setPowerMode("NORMAL")
 FireSimulation.hideFirefighters()
-print("[SimController] Sistema inicializado correctamente. Version 2.2.")
+Logger.info("System", "SimulationController initialized")

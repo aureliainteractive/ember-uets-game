@@ -15,6 +15,7 @@ local TweenService = game:GetService("TweenService")
 
 -- KioskConfig: display names, descriptions, and step data.
 local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 
 local SimulationStartBindable = ReplicatedStorage:WaitForChild("SimulationStartBindable")
 
@@ -362,7 +363,7 @@ local function cancelAndReturnHome(message)
 	waitingRemoteConfirm = false
 	clearSelections()
 	if message then
-		warn("[Kiosk v2] " .. message)
+		Logger.info("UI", message)
 	end
 	setCurrentCanvas("homeCanvas")
 	if currentPlayer then
@@ -523,7 +524,6 @@ local function onCanvasNext(canvasName)
 
 	if canvasName == "typeCanvas" then
 		if not mode then
-			warn("[Kiosk v2] Selecciona un simulacro antes de continuar")
 			return
 		end
 		setCurrentCanvas("envCanvas")
@@ -532,7 +532,6 @@ local function onCanvasNext(canvasName)
 
 	if canvasName == "envCanvas" then
 		if not loc then
-			warn("[Kiosk v2] Selecciona una ubicación antes de continuar")
 			return
 		end
 		setCurrentCanvas("diffCanvas")
@@ -541,7 +540,6 @@ local function onCanvasNext(canvasName)
 
 	if canvasName == "diffCanvas" then
 		if not diff then
-			warn("[Kiosk v2] Selecciona una dificultad antes de continuar")
 			return
 		end
 		updateConfirmationInfo()
@@ -594,8 +592,8 @@ local function requestFinalConfirmation()
 			diff = diff,
 		})
 		SimulationStartBindable:Fire(playerSnapshot, mode, loc, diff)
-		print(string.format("[Kiosk v2] Simulación iniciada para %s", playerSnapshot.Name))
-		print(string.format("[Kiosk v2] Modo: %s, Ubicación: %s, Dificultad: %s", mode, loc, diff))
+		Logger.info("UI", string.format("Kiosk v2 launch confirmed for %s", playerSnapshot.Name))
+		Logger.debug("UI", string.format("Selection: mode=%s location=%s difficulty=%s", mode, loc, diff))
 
 		configInProgress = false
 		clearSelections()
@@ -696,7 +694,7 @@ hitboxPart.Touched:Connect(function(hit)
 		currentPlayer = player
 		setCurrentCanvas("homeCanvas")
 		startConfigBtn.Visible = true
-		print(string.format("[Kiosk v2] %s entró a la zona", player.Name))
+		Logger.debug("UI", string.format("Player entered kiosk v2 zone: %s", player.Name))
 	end
 end)
 
@@ -718,13 +716,13 @@ hitboxPart.TouchEnded:Connect(function(hit)
 		end
 	end
 
-	print(string.format("[Kiosk v2] %s salió de la zona (config cancelada)", player.Name))
+	Logger.info("UI", string.format("Player left kiosk v2 zone: %s", player.Name))
 	resetKiosk()
 end)
 
 Players.PlayerRemoving:Connect(function(player)
 	if player == currentPlayer then
-		print(string.format("[Kiosk v2] %s desconectado — kiosk reseteado", player.Name))
+		Logger.info("UI", string.format("Kiosk v2 session reset after disconnect: %s", player.Name))
 		resetKiosk()
 	end
 end)

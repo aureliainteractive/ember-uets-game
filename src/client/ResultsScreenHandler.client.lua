@@ -12,6 +12,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 local showResultsEvent = ReplicatedStorage:WaitForChild("ShowResults")
 local returnToLobbyEvent = ReplicatedStorage:WaitForChild("ReturnToLobby")
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 
 -- ============================================================
 -- UI REFERENCES — adjust names to match your ScreenGui
@@ -169,7 +170,7 @@ local function getRankImageTarget()
 		return firstImage
 	end
 
-	warn("[ResultsScreenHandler] RankContainer no tiene un ImageLabel para cambiar imagen.")
+	Logger.warn("UI", "RankContainer has no ImageLabel target")
 	return nil
 end
 

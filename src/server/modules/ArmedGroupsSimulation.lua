@@ -8,6 +8,7 @@ local DialogService = require(script.Parent.DialogService)
 local NavigationUtils = require(script.Parent.NavigationUtils)
 local ResultsSystem = require(script.Parent.ResultsSystem)
 local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 
 local atacantNPC = ReplicatedStorage:WaitForChild("Atacant NPC")
 local AtacantsSpawns = workspace:WaitForChild("AtacantsSpawns")
@@ -81,14 +82,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 	}
 
 	local session = state.playerSimulationData[player.UserId]
-	print(
-		string.format(
-			"[SimController] Grupos armados iniciado: %s — %s — Dificultad %d",
-			player.Name,
-			locationName,
-			difficulty
-		)
-	)
+	Logger.info("System", string.format("ArmedGroups simulation started for %s at %s (difficulty %d)", player.Name, locationName, difficulty))
 	services.HUDService.startTicker(player, session, services)
 
 	local function recordStep()
@@ -160,7 +154,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 	services.controllerHUDEvent:FireClient(player, "Show")
 	local wp1 = NavigationUtils.getWaypoint(locationName, "ArmedGroupsSimulation", 1)
 	if not wp1 then
-		warn("[SimController] Grupos armados: Waypoint1 no encontrado.")
+		Logger.warn("System", "ArmedGroupsSimulation Waypoint1 is missing")
 		services.setPowerMode("NORMAL")
 		services.setSimulationActive("ArmedGroups", locationName, false)
 		services.HUDService.stopTicker(player)
@@ -194,7 +188,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 
 			local wp3 = NavigationUtils.getWaypoint(locationName, "ArmedGroupsSimulation", 3)
 			if not wp3 then
-				warn("[SimController] Grupos armados: Waypoint3 no encontrado.")
+				Logger.warn("System", "ArmedGroupsSimulation Waypoint3 is missing")
 				services.setPowerMode("NORMAL")
 				services.setSimulationActive("ArmedGroups", locationName, false)
 				services.controllerHUDEvent:FireClient(player, "Hide")
@@ -220,7 +214,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 
 				local wp4 = NavigationUtils.getWaypoint(locationName, "ArmedGroupsSimulation", 4)
 				if not wp4 then
-					warn("[SimController] Grupos armados: Waypoint4 no encontrado.")
+					Logger.warn("System", "ArmedGroupsSimulation Waypoint4 is missing")
 					services.setPowerMode("NORMAL")
 					services.setSimulationActive("ArmedGroups", locationName, false)
 					services.controllerHUDEvent:FireClient(player, "Hide")
