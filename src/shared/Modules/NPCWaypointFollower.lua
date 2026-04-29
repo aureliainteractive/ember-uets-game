@@ -8,6 +8,7 @@
 local NPCWaypointFollower = {}
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
+local NodeGraph = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Modules"):WaitForChild("NodeGraph"))
 
 -- ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -531,6 +532,11 @@ function NPCWaypointFollower.start(npcModel)
 			return
 		end
 
+		-- Start from nearest node to NPC
+		local currentNode = nil
+		local preferFloor = npcModel:GetAttribute("FloorName")
+		currentNode = NodeGraph.getNearestNode(rootPart.Position, buildingName, preferFloor)
+
 		for _, entry in ipairs(waypoints) do
 			if not npcModel.Parent then
 				return
@@ -540,9 +546,33 @@ function NPCWaypointFollower.start(npcModel)
 			end
 
 			local wp = entry.part
-
 			local wpType = wp:GetAttribute("WaypointType") or "Transit"
 
+			local targetNode = NodeGraph.getNearestNode(wp.Position, buildingName)
+
+			if targetNode and currentNode then
+				local path = NodeGraph.findPathBetweenNodes(currentNode, targetNode, buildingName)
+				if path and #path > 0 then
+					for _, nodeInst in ipairs(path) do
+						if not npcModel.Parent or humanoid.Health <= 0 then
+							return
+						end
+						moveTo(nodeInst.Position, offset)
+					end
+				else
+					-- Fallback: attempt to move to the target node or waypoint position
+					if targetNode then
+						moveTo(targetNode.Position, offset)
+					else
+						moveTo(wp.Position, offset)
+					end
+				end
+			else
+				-- No graph available; fall back to legacy waypoint move
+				moveTo(wp.Position, offset)
+			end
+
+			-- After traversing nodes, perform the waypoint-specific behavior
 			if wpType == "Transit" then
 				handleTransit(wp, offset)
 			elseif wpType == "Hold" then
@@ -554,6 +584,14 @@ function NPCWaypointFollower.start(npcModel)
 			else
 				Logger.warn("NPC", "Unknown WaypointType " .. tostring(wpType) .. "; using Transit behavior")
 				handleTransit(wp, offset)
+			end
+
+			-- Update currentNode to be the last reached targetNode (if available)
+			if targetNode then
+				currentNode = targetNode
+			else
+				-- if we couldn't resolve a node, attempt to re-resolve from the NPC position
+				currentNode = NodeGraph.getNearestNode(rootPart.Position, buildingName, preferFloor)
 			end
 		end
 	end
