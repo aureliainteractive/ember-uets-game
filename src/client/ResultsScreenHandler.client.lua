@@ -6,6 +6,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
+local UIManager = require(ReplicatedStorage.Shared.UIManager)
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -18,8 +19,8 @@ local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Lo
 -- UI REFERENCES — adjust names to match your ScreenGui
 -- ============================================================
 
-local Screen = playerGui:WaitForChild("ResultsScreen") -- ScreenGui
-local Container = Screen:WaitForChild("Container") -- Main Frame
+local Screen = UIManager.get(playerGui, "ResultsScreen") -- ScreenGui
+local Container = UIManager.get(Screen, "Container") -- Main Frame
 
 -- Header
 local LabelHeader = Container:WaitForChild("LabelHeader") -- TextLabel: "SimType | Location | Difficulty"

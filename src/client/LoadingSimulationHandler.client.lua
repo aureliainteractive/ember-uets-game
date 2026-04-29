@@ -1,9 +1,11 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local UIManager = require(ReplicatedStorage.Shared.UIManager)
 
 local player = Players.LocalPlayer
-local loadingUI = player:WaitForChild("PlayerGui"):WaitForChild("LoadingUI")
+
+local loadingUI = UIManager.get(player:WaitForChild("PlayerGui"), "LoadingUI")
 
 local loadingEvent = ReplicatedStorage:WaitForChild("SimulationLoadingEvent")
 local loadingReadyEvent = ReplicatedStorage:WaitForChild("SimulationLoadingReady")

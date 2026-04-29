@@ -3,11 +3,12 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
+local UIManager = require(ReplicatedStorage.Shared.UIManager)
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local HUD = playerGui:WaitForChild("HUD_VR")
+local HUD = UIManager.get(playerGui, "HUD_VR")
 
 local dialogContainer = HUD:WaitForChild("SistemaEmberInfo")
 local textLabel = dialogContainer:WaitForChild("LabelTexto")

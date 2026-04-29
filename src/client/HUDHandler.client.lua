@@ -1,11 +1,12 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
+local UIManager = require(ReplicatedStorage.Shared.UIManager)
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local HUDContainer = playerGui:WaitForChild("HUD_VR")
+local HUDContainer = UIManager.get(playerGui, "HUD_VR")
 
 local ControllerUI_HUD = ReplicatedStorage:WaitForChild("ControllerUI_HUD")
 local HUDUpdate = ReplicatedStorage:WaitForChild("HUDUpdate")

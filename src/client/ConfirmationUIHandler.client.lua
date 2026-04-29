@@ -23,6 +23,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
+local UIManager = require(ReplicatedStorage.Shared.UIManager)
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -34,11 +35,11 @@ local confirmEvent = ReplicatedStorage:WaitForChild("KioskConfirm")
 
 -- ── UI REFERENCES ──────────────────────────────────────────────────
 
-local Screen = playerGui:WaitForChild("ConfirmationUI") -- ScreenGui
-local Panel = Screen:WaitForChild("Panel") -- ImageLabel (animated)
-local Controles = Screen:WaitForChild("Controles") -- ImageLabel (animated)
-local Objectives = Panel:WaitForChild("Objectives") -- Frame (UIGridLayout)
-local btnConfirm = Screen:WaitForChild("Confirmar") -- ImageButton
+local Screen = UIManager.get(playerGui, "ConfirmationUI") -- ScreenGui
+local Panel = UIManager.get(Screen, "Panel") -- ImageLabel (animated)
+local Controles = UIManager.get(Screen, "Controles") -- ImageLabel (animated)
+local Objectives = UIManager.get(Panel, "Objectives") -- Frame (UIGridLayout)
+local btnConfirm = UIManager.get(Screen, "Confirmar") -- ImageButton
 
 -- Objective TextLabels (Objective1–Objective4)
 local ObjectiveLabels = {
