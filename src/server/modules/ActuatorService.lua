@@ -10,19 +10,23 @@ local ActuatorService = {}
 -- Fires a physical actuator request and resolves through callback.
 function ActuatorService.fire(player, actuatorName, value, duration, callback)
 	if not player or not player.Parent then
-		if callback then callback(false, "Jugador invalido") end
+		if callback then
+			callback(false, "Jugador invalido")
+		end
 		return
 	end
 	if not actuatorName or value == nil then
-		if callback then callback(false, "Parametros invalidos") end
+		if callback then
+			callback(false, "Parametros invalidos")
+		end
 		return
 	end
 
 	local payload = {
-		actuator  = actuatorName,
-		value     = tostring(value),
-		duration  = tonumber(duration) or 0,
-		player    = player.UserId,
+		actuator = actuatorName,
+		value = tostring(value),
+		duration = tonumber(duration) or 0,
+		player = player.UserId,
 		timestamp = os.time(),
 	}
 
@@ -38,11 +42,15 @@ function ActuatorService.fire(player, actuatorName, value, duration, callback)
 
 	if not ok then
 		warn(string.format("[SimController] Error al contactar actuador '%s': %s", actuatorName, tostring(result)))
-		if callback then callback(false, "Error de conexion con el actuador") end
+		if callback then
+			callback(false, "Error de conexion con el actuador")
+		end
 		return
 	end
 
-	if callback then callback(true, result) end
+	if callback then
+		callback(true, result)
+	end
 end
 
 return ActuatorService

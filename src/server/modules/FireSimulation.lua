@@ -8,13 +8,13 @@ local DialogService = require(script.Parent.DialogService)
 local NavigationUtils = require(script.Parent.NavigationUtils)
 local ActuatorService = require(script.Parent.ActuatorService)
 local ResultsSystem = require(script.Parent.ResultsSystem)
-local KioskConfig   = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
+local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 
 local RNG = Random.new()
 
 local IGNORED_PART_NAMES = {
 	["Baseplate"] = true,
-	["Terrain"]   = true,
+	["Terrain"] = true,
 }
 
 local MIN_VOLUME_FIRE = 0.05
@@ -83,11 +83,21 @@ end
 
 -- Returns whether an object is a valid candidate part for fire effects.
 function FireSimulation.isValidPart(obj)
-	if not obj or not obj:IsA("BasePart") then return false end
-	if not obj.Parent then return false end
-	if obj.Transparency >= 1 then return false end
-	if IGNORED_PART_NAMES[obj.Name] then return false end
-	if obj.Locked then return false end
+	if not obj or not obj:IsA("BasePart") then
+		return false
+	end
+	if not obj.Parent then
+		return false
+	end
+	if obj.Transparency >= 1 then
+		return false
+	end
+	if IGNORED_PART_NAMES[obj.Name] then
+		return false
+	end
+	if obj.Locked then
+		return false
+	end
 	return true
 end
 
@@ -97,7 +107,9 @@ function FireSimulation.collectBuildingParts(building)
 	local count = 0
 	for _, obj in ipairs(building:GetDescendants()) do
 		count += 1
-		if count % SCAN_YIELD_EVERY == 0 then task.wait() end
+		if count % SCAN_YIELD_EVERY == 0 then
+			task.wait()
+		end
 		if FireSimulation.isValidPart(obj) and FireSimulation.getVolume(obj) >= MIN_VOLUME_FIRE then
 			table.insert(parts, obj)
 		end
@@ -126,7 +138,9 @@ function FireSimulation.smokeParams(part, difficulty)
 end
 
 local function resolveParticleRoot()
-	if particleRootResolved then return particleRootCache end
+	if particleRootResolved then
+		return particleRootCache
+	end
 	particleRootResolved = true
 
 	local node = ReplicatedStorage
@@ -145,7 +159,9 @@ end
 
 local function getPresetForPart(part)
 	local root = resolveParticleRoot()
-	if not root then return nil end
+	if not root then
+		return nil
+	end
 
 	local isLarge = FireSimulation.getVolume(part) >= LARGE_PART_MIN_VOLUME
 	local presetName = isLarge and PARTICLE_PRESET_LARGE_NAME or PARTICLE_PRESET_SMALL_NAME
@@ -161,11 +177,7 @@ end
 
 local function computeScaledRates(part, difficulty)
 	local fireSize = FireSimulation.fireSize(part, difficulty)
-	local multiplier = math.clamp(
-		fireSize / RATE_REFERENCE_FIRE_SIZE,
-		RATE_MIN_MULTIPLIER,
-		RATE_MAX_MULTIPLIER
-	)
+	local multiplier = math.clamp(fireSize / RATE_REFERENCE_FIRE_SIZE, RATE_MIN_MULTIPLIER, RATE_MAX_MULTIPLIER)
 
 	local fireRate = FIRE_BASE_RATE * multiplier
 	local smokeRate = fireRate * SMOKE_TO_FIRE_RATE_RATIO
@@ -174,7 +186,9 @@ end
 
 local function applyCustomParticles(part, difficulty)
 	local preset = getPresetForPart(part)
-	if not preset then return false end
+	if not preset then
+		return false
+	end
 
 	local fireRate, smokeRate = computeScaledRates(part, difficulty)
 	local foundEmitterTemplate = false
@@ -213,7 +227,9 @@ end
 
 -- Adds or updates fire and smoke effects on a part.
 function FireSimulation.ignite(part, difficulty)
-	if not part or not part.Parent then return end
+	if not part or not part.Parent then
+		return
+	end
 
 	-- Try custom particle presets first (small/large).
 	if applyCustomParticles(part, difficulty) then
@@ -237,17 +253,28 @@ end
 
 -- Removes fire and smoke effects from a part.
 function FireSimulation.extinguish(part)
-	if not part or not part.Parent then return end
+	if not part or not part.Parent then
+		return
+	end
 	for _, obj in ipairs(part:GetChildren()) do
-		if obj:IsA("ParticleEmitter") and string.sub(obj.Name, 1, #DYNAMIC_PARTICLE_PREFIX) == DYNAMIC_PARTICLE_PREFIX then
+		if
+			obj:IsA("ParticleEmitter")
+			and string.sub(obj.Name, 1, #DYNAMIC_PARTICLE_PREFIX) == DYNAMIC_PARTICLE_PREFIX
+		then
 			obj.Enabled = false
 			obj:Destroy()
 		end
 	end
 	local fire = part:FindFirstChild("DynamicFire")
-	if fire then fire.Enabled = false; fire:Destroy() end
+	if fire then
+		fire.Enabled = false
+		fire:Destroy()
+	end
 	local smoke = part:FindFirstChild("DynamicSmoke")
-	if smoke then smoke.Enabled = false; smoke:Destroy() end
+	if smoke then
+		smoke.Enabled = false
+		smoke:Destroy()
+	end
 end
 
 -- Selects fire origin as the largest by volume among random samples.
@@ -257,7 +284,10 @@ function FireSimulation.pickFireOrigin(parts)
 		local p = parts[RNG:NextInteger(1, #parts)]
 		if p and p.Parent then
 			local v = FireSimulation.getVolume(p)
-			if v > bestVol then bestVol = v; best = p end
+			if v > bestVol then
+				bestVol = v
+				best = p
+			end
 		end
 	end
 	return best or parts[RNG:NextInteger(1, #parts)]
@@ -265,7 +295,9 @@ end
 
 -- Spreads procedural fire from a seed part for a duration and returns affected parts.
 function FireSimulation.spreadFire(parts, difficulty, durationSeconds, seedPart)
-	if #parts == 0 then return {} end
+	if #parts == 0 then
+		return {}
+	end
 
 	local burnedSet = {}
 	local burningList = {}
@@ -286,15 +318,21 @@ function FireSimulation.spreadFire(parts, difficulty, durationSeconds, seedPart)
 
 	local function findCandidates(origin, limit)
 		local candidates = {}
-		if not origin or not origin.Parent then return candidates end
+		if not origin or not origin.Parent then
+			return candidates
+		end
 		local samples = math.min(500, #parts)
 		for _ = 1, samples do
 			local p = parts[RNG:NextInteger(1, #parts)]
 			if p and p.Parent and not burnedSet[p] then
-				if (p.Position - origin.Position).Magnitude <= spreadRadius
-					and FireSimulation.getVolume(p) >= MIN_VOLUME_FIRE then
+				if
+					(p.Position - origin.Position).Magnitude <= spreadRadius
+					and FireSimulation.getVolume(p) >= MIN_VOLUME_FIRE
+				then
 					table.insert(candidates, p)
-					if #candidates >= limit then break end
+					if #candidates >= limit then
+						break
+					end
 				end
 			end
 		end
@@ -303,7 +341,9 @@ function FireSimulation.spreadFire(parts, difficulty, durationSeconds, seedPart)
 
 	while tick() < endTime do
 		task.wait(waveInterval)
-		if #burningList == 0 then break end
+		if #burningList == 0 then
+			break
+		end
 
 		local front = burningList[RNG:NextInteger(1, #burningList)]
 		if not front or not front.Parent then
@@ -327,19 +367,25 @@ function FireSimulation.spreadFire(parts, difficulty, durationSeconds, seedPart)
 			local excess = #burningList - maxTotal
 			for _ = 1, excess do
 				local old = table.remove(burningList, 1)
-				if old and old.Parent then FireSimulation.extinguish(old) end
+				if old and old.Parent then
+					FireSimulation.extinguish(old)
+				end
 			end
 		end
 	end
 
 	local affected = {}
-	for p in pairs(burnedSet) do table.insert(affected, p) end
+	for p in pairs(burnedSet) do
+		table.insert(affected, p)
+	end
 	return affected
 end
 
 -- Initializes firefighter root part original states.
 function FireSimulation.initializeFirefighters()
-	if firefightersInitialized then return end
+	if firefightersInitialized then
+		return
+	end
 	for _, d in ipairs(FIREFIGHTERS_FOLDER:GetDescendants()) do
 		if d:IsA("BasePart") and d.Name == "HumanoidRootPart" then
 			firefightersData[d] = {
@@ -430,9 +476,18 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 
 	local session = state.playerSimulationData[player.UserId]
 	player.CharacterRemoving:Connect(function()
-		if session then session.simulationEnded = true end
+		if session then
+			session.simulationEnded = true
+		end
 	end)
-	print(string.format("[SimController] Incendio iniciado: %s — %s — Dificultad %d", player.Name, locationName, difficulty))
+	print(
+		string.format(
+			"[SimController] Incendio iniciado: %s — %s — Dificultad %d",
+			player.Name,
+			locationName,
+			difficulty
+		)
+	)
 	services.HUDService.startTicker(player, session, services)
 
 	local function recordStep()
@@ -444,9 +499,13 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 	local affectedParts = {}
 
 	local function cleanup()
-		if session.simulationEnded then return end
+		if session.simulationEnded then
+			return
+		end
 		session.simulationEnded = true
-		for _, part in ipairs(affectedParts) do FireSimulation.extinguish(part) end
+		for _, part in ipairs(affectedParts) do
+			FireSimulation.extinguish(part)
+		end
 		FireSimulation.hideFirefighters()
 		services.setSimulationActive("Fire", locationName, false)
 		services.setPowerMode("NORMAL")
@@ -465,7 +524,11 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 		NavigationUtils.highlightPart(seedPart, true)
 	end
 
-	DialogService.send(player, "Warning", "SIMULACRO DE INCENDIO — Se ha reportado un foco de fuego en las instalaciones.")
+	DialogService.send(
+		player,
+		"Warning",
+		"SIMULACRO DE INCENDIO — Se ha reportado un foco de fuego en las instalaciones."
+	)
 	task.wait(2)
 	DialogService.send(player, "Warning", "El origen del fuego ha sido identificado y senalado. Localicelo.")
 
@@ -480,7 +543,9 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 			if not player.Parent then
 				break
 			end
-			if session.simulationEnded then break end
+			if session.simulationEnded then
+				break
+			end
 
 			if player.Character then
 				local hrp = player.Character:FindFirstChild("HumanoidRootPart")
@@ -501,7 +566,11 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 						end
 
 						NavigationUtils.highlightPart(wp2, true)
-						DialogService.send(player, "Warning", "PASO 2: Dirijase al punto senalado y active la alarma de incendio.")
+						DialogService.send(
+							player,
+							"Warning",
+							"PASO 2: Dirijase al punto senalado y active la alarma de incendio."
+						)
 
 						NavigationUtils.setupWaypointDetection(player, wp2, 2, function()
 							recordStep()
@@ -518,9 +587,17 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 							end
 
 							NavigationUtils.highlightPart(wp3, true)
-							DialogService.send(player, "Warning", "PASO 3: Evacue el edificio de inmediato. Camine rapido, no corra.")
+							DialogService.send(
+								player,
+								"Warning",
+								"PASO 3: Evacue el edificio de inmediato. Camine rapido, no corra."
+							)
 							task.wait(1)
-							DialogService.send(player, "Info", "Use las salidas de emergencia. Mantengase alejado del fuego.")
+							DialogService.send(
+								player,
+								"Info",
+								"Use las salidas de emergencia. Mantengase alejado del fuego."
+							)
 
 							NavigationUtils.setupWaypointDetection(player, wp3, 3, function()
 								recordStep()
@@ -538,17 +615,31 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 								NavigationUtils.highlightPart(wp4, true)
 								DialogService.send(player, "Warning", "PASO 4: Dirijase al punto de encuentro externo.")
 								task.wait(1)
-								DialogService.send(player, "Info", "Permanezca ahi hasta nueva instruccion. No reingrese al edificio.")
+								DialogService.send(
+									player,
+									"Info",
+									"Permanezca ahi hasta nueva instruccion. No reingrese al edificio."
+								)
 
 								NavigationUtils.setupWaypointDetection(player, wp4, 4, function()
 									recordStep()
 									NavigationUtils.highlightPart(wp4, false)
-									DialogService.send(player, "Success", "Punto de encuentro alcanzado. Simulacro completado.")
+									DialogService.send(
+										player,
+										"Success",
+										"Punto de encuentro alcanzado. Simulacro completado."
+									)
 									task.wait(2)
 									cleanup()
 									services.controllerHUDEvent:FireClient(player, "Hide")
-									ResultsSystem.show(player, session, "FireSimulation",
-										locationName, difficulty, services.mainLobbySpawn)
+									ResultsSystem.show(
+										player,
+										session,
+										"FireSimulation",
+										locationName,
+										difficulty,
+										services.mainLobbySpawn
+									)
 								end)
 							end)
 						end)
@@ -566,7 +657,13 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 
 	task.delay(services.SIMULATION_GLOBAL_TIMEOUT, function()
 		if state.playerSimulationData[player.UserId] then
-			warn(string.format("[SimController] Incendio: timeout de %ds alcanzado para %s.", services.SIMULATION_GLOBAL_TIMEOUT, player.Name))
+			warn(
+				string.format(
+					"[SimController] Incendio: timeout de %ds alcanzado para %s.",
+					services.SIMULATION_GLOBAL_TIMEOUT,
+					player.Name
+				)
+			)
 			cleanup()
 			DialogService.send(player, "Warning", "El simulacro ha finalizado por tiempo limite.")
 			NavigationUtils.teleportPlayer(player, services.mainLobbySpawn)

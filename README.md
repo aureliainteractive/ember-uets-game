@@ -52,12 +52,12 @@ Traditional emergency drills are infrequent, disruptive to normal school activit
 
 ## Technologies Used
 
-| Technology | Role |
-|---|---|
-| **Roblox Studio** | Game engine and place editor |
-| **Luau** | Scripting language (Lua 5.1 superset used by Roblox) |
-| **Rojo 7.7.0-rc.1** | File-system sync tool between VS Code and Roblox Studio |
-| **Aftman** | Cross-platform toolchain manager for Rojo |
+| Technology                  | Role                                                                       |
+| --------------------------- | -------------------------------------------------------------------------- |
+| **Roblox Studio**           | Game engine and place editor                                               |
+| **Luau**                    | Scripting language (Lua 5.1 superset used by Roblox)                       |
+| **Rojo 7.7.0-rc.1**         | File-system sync tool between VS Code and Roblox Studio                    |
+| **Aftman**                  | Cross-platform toolchain manager for Rojo                                  |
 | **NexusVR Character Model** | VR character controller and hand input (referenced from ReplicatedStorage) |
 
 ---
@@ -106,11 +106,11 @@ ember-uets/
 
 The `default.project.json` file tells Rojo where each folder maps inside the Roblox DataModel:
 
-| File-system path | Roblox location |
-|---|---|
-| `src/client/` | `StarterPlayer > StarterPlayerScripts > Client` |
-| `src/server/` | `ServerScriptService > Server` |
-| `src/shared/` | `ReplicatedStorage > Shared` |
+| File-system path | Roblox location                                 |
+| ---------------- | ----------------------------------------------- |
+| `src/client/`    | `StarterPlayer > StarterPlayerScripts > Client` |
+| `src/server/`    | `ServerScriptService > Server`                  |
+| `src/shared/`    | `ReplicatedStorage > Shared`                    |
 
 ---
 

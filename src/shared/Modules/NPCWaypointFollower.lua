@@ -25,6 +25,12 @@ local DOOR_DETECTION_RADIUS = 16 -- studs: scan nearby doors with extra margin
 local DOOR_TRIGGER_DISTANCE = 12 -- studs: trigger opening before NPC gets stuck at frame
 local DOOR_DEBOUNCE_TIME = 1.5 -- seconds: prevent door spam from same NPC
 
+-- Crowd/anti-clumping constants
+local AUTO_OFFSET_RADIUS = 2.25 -- studs: fallback per-NPC lateral spread when no PositionOffset is provided
+local STUCK_TIME_BEFORE_NUDGE = 1.0 -- seconds standing almost still before re-path nudge
+local STUCK_MOVEMENT_EPSILON = 0.05 -- studs per tick considered "not moving"
+local STUCK_NUDGE_RADIUS = 2.0 -- studs: temporary nudge radius to break local congestion
+
 -- ─── Global door cache (built once, updated on structure changes) ──────────────
 
 local doorCache = {}
@@ -315,7 +321,15 @@ function NPCWaypointFollower.start(npcModel)
 				doorDebounces[closestDoor] = {}
 			end
 			doorDebounces[closestDoor].lastTriggeredTime = tick()
-			print("[NPCWaypointFollower] " .. npcModel.Name .. " opening door: " .. closestDoor.Name .. " (distance: " .. tostring(math.floor(closestDistance)) .. ")")
+			print(
+				"[NPCWaypointFollower] "
+					.. npcModel.Name
+					.. " opening door: "
+					.. closestDoor.Name
+					.. " (distance: "
+					.. tostring(math.floor(closestDistance))
+					.. ")"
+			)
 			closestOpenDoorEvent:Fire()
 		end
 	end
@@ -390,8 +404,14 @@ function NPCWaypointFollower.start(npcModel)
 	-- ─── Movement ─────────────────────────────────────────────────────────────────
 
 	local function moveTo(targetPos, offset)
-		local goal = targetPos + (offset or Vector3.zero)
+		local effectiveOffset = offset or Vector3.zero
+		local goal = targetPos + effectiveOffset
 		local reached = false
+		local stagnantTime = 0
+		local lastPos = rootPart.Position
+
+		-- Stable phase per NPC so each one nudges in a different direction when stuck.
+		local nudgePhase = (math.abs(rootPart.Position.X * 0.73 + rootPart.Position.Z * 1.37) % 1) * (math.pi * 2)
 
 		local conn = humanoid.MoveToFinished:Connect(function(didReach)
 			if didReach then
@@ -410,6 +430,24 @@ function NPCWaypointFollower.start(npcModel)
 			if reached or (rootPart.Position - goal).Magnitude <= ARRIVE_RADIUS then
 				conn:Disconnect()
 				return true
+			end
+
+			-- Anti-clumping: if this NPC is nearly static for some time, re-issue MoveTo with
+			-- a small lateral nudge so congested groups can keep flowing.
+			local moved = (rootPart.Position - lastPos).Magnitude
+			if moved <= STUCK_MOVEMENT_EPSILON then
+				stagnantTime += TICK_RATE
+			else
+				stagnantTime = 0
+			end
+			lastPos = rootPart.Position
+
+			if stagnantTime >= STUCK_TIME_BEFORE_NUDGE then
+				local phase = nudgePhase + elapsed * 2
+				local nudge = Vector3.new(math.cos(phase), 0, math.sin(phase)) * STUCK_NUDGE_RADIUS
+				goal = targetPos + effectiveOffset + nudge
+				humanoid:MoveTo(goal)
+				stagnantTime = 0
 			end
 
 			-- Check for nearby doors during movement
@@ -471,7 +509,19 @@ function NPCWaypointFollower.start(npcModel)
 			return
 		end
 
-		local offset = rawOffset or Vector3.zero
+		local offset
+		if rawOffset then
+			offset = rawOffset
+		else
+			-- Fallback spread so NPCs don't stack on tiny waypoints when PositionOffset isn't set.
+			local seedA = math.abs(math.sin(rootPart.Position.X * 12.9898 + rootPart.Position.Z * 78.233) * 43758.5453)
+			local seedB = math.abs(math.sin(rootPart.Position.X * 39.3467 + rootPart.Position.Z * 11.1351) * 96321.4242)
+			local a = seedA - math.floor(seedA)
+			local b = seedB - math.floor(seedB)
+			local angle = a * math.pi * 2
+			local radius = AUTO_OFFSET_RADIUS * (0.35 + (0.65 * b))
+			offset = Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+		end
 
 		if startDelay > 0 then
 			task.wait(startDelay)
@@ -525,7 +575,7 @@ function NPCWaypointFollower.start(npcModel)
 	task.spawn(run)
 end
 
--- Allow manual rebuild from the Command Bar for debugging: 
+-- Allow manual rebuild from the Command Bar for debugging:
 -- local m = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Modules"):WaitForChild("NPCWaypointFollower")); m.rebuildDoorCache()
 NPCWaypointFollower.rebuildDoorCache = rebuildDoorCache
 

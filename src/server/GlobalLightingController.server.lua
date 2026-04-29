@@ -10,7 +10,7 @@ local TweenService = game:GetService("TweenService")
 -- CONFIG
 -- =========================
 local NIGHT_START = 18.0
-local NIGHT_END   = 6.0
+local NIGHT_END = 6.0
 
 -- Parámetros luces normales
 local DAY_LIGHT_BRIGHTNESS = 0.25
@@ -25,7 +25,7 @@ local NIGHT_GLASS_TRANSPARENCY = 0.8
 
 -- Material swap
 local OFF_MATERIAL = Enum.Material.SmoothPlastic
-local ON_MATERIAL  = Enum.Material.Neon
+local ON_MATERIAL = Enum.Material.Neon
 
 local LIGHT_CLASSES = {
 	PointLight = true,
@@ -151,7 +151,7 @@ local function tweenLight(light: Instance, brightness: number, color: Color3)
 	local tweenInfo = TweenInfo.new(TWEEN_TIME_LIGHT, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	TweenService:Create(light, tweenInfo, {
 		Brightness = brightness,
-		Color = color
+		Color = color,
 	}):Play()
 end
 
@@ -173,7 +173,9 @@ local function applyState()
 	local night = isNight(Lighting.ClockTime)
 
 	local key = mode .. "|" .. (night and "N" or "D")
-	if key == lastAppliedKey then return end
+	if key == lastAppliedKey then
+		return
+	end
 	lastAppliedKey = key
 
 	cleanupCache()

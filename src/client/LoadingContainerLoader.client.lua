@@ -8,11 +8,7 @@ local function tweenWait(obj, prop, startValue, endValue, duration, easingStyle,
 	easingStyle = easingStyle or Enum.EasingStyle.Sine
 	easingDir = easingDir or Enum.EasingDirection.InOut
 	obj[prop] = startValue
-	local tween = TweenService:Create(
-		obj,
-		TweenInfo.new(duration, easingStyle, easingDir),
-		{[prop] = endValue}
-	)
+	local tween = TweenService:Create(obj, TweenInfo.new(duration, easingStyle, easingDir), { [prop] = endValue })
 	tween:Play()
 	tween.Completed:Wait()
 end
@@ -21,11 +17,7 @@ local function tweenAsync(obj, prop, startValue, endValue, duration, easingStyle
 	easingStyle = easingStyle or Enum.EasingStyle.Sine
 	easingDir = easingDir or Enum.EasingDirection.InOut
 	obj[prop] = startValue
-	local tween = TweenService:Create(
-		obj,
-		TweenInfo.new(duration, easingStyle, easingDir),
-		{[prop] = endValue}
-	)
+	local tween = TweenService:Create(obj, TweenInfo.new(duration, easingStyle, easingDir), { [prop] = endValue })
 	tween:Play()
 	return tween
 end
@@ -38,11 +30,7 @@ local function tweenWaitMulti(obj, props, startValues, endValues, duration, easi
 		obj[prop] = startValues[i]
 		tweenGoals[prop] = endValues[i]
 	end
-	local tween = TweenService:Create(
-		obj,
-		TweenInfo.new(duration, easingStyle, easingDir),
-		tweenGoals
-	)
+	local tween = TweenService:Create(obj, TweenInfo.new(duration, easingStyle, easingDir), tweenGoals)
 	tween:Play()
 	tween.Completed:Wait()
 end
@@ -55,11 +43,7 @@ local function tweenAsyncMulti(obj, props, startValues, endValues, duration, eas
 		obj[prop] = startValues[i]
 		tweenGoals[prop] = endValues[i]
 	end
-	local tween = TweenService:Create(
-		obj,
-		TweenInfo.new(duration, easingStyle, easingDir),
-		tweenGoals
-	)
+	local tween = TweenService:Create(obj, TweenInfo.new(duration, easingStyle, easingDir), tweenGoals)
 	tween:Play()
 	return tween
 end
@@ -67,7 +51,9 @@ end
 --------------------------------------------------------------
 -- ESPERAR JUEGO
 --------------------------------------------------------------
-if not game:IsLoaded() then game.Loaded:Wait() end
+if not game:IsLoaded() then
+	game.Loaded:Wait()
+end
 task.wait(0.5)
 
 --------------------------------------------------------------
@@ -95,7 +81,13 @@ local function getAssetCategory(instance)
 		return "efectos visuales"
 	elseif instance:IsA("MeshPart") or instance:IsA("SpecialMesh") then
 		return "modelos 3D"
-	elseif instance:IsA("Decal") or instance:IsA("Texture") or instance:IsA("ImageLabel") or instance:IsA("ImageButton") or instance:IsA("SurfaceAppearance") then
+	elseif
+		instance:IsA("Decal")
+		or instance:IsA("Texture")
+		or instance:IsA("ImageLabel")
+		or instance:IsA("ImageButton")
+		or instance:IsA("SurfaceAppearance")
+	then
 		return "texturas e interfaz"
 	end
 
@@ -105,7 +97,19 @@ end
 local function buildPreloadTargets()
 	local targets = {}
 	for _, descendant in ipairs(game:GetDescendants()) do
-		if descendant:IsA("Decal") or descendant:IsA("Texture") or descendant:IsA("ImageLabel") or descendant:IsA("ImageButton") or descendant:IsA("Sound") or descendant:IsA("Animation") or descendant:IsA("MeshPart") or descendant:IsA("SpecialMesh") or descendant:IsA("SurfaceAppearance") or descendant:IsA("ParticleEmitter") or descendant:IsA("Trail") then
+		if
+			descendant:IsA("Decal")
+			or descendant:IsA("Texture")
+			or descendant:IsA("ImageLabel")
+			or descendant:IsA("ImageButton")
+			or descendant:IsA("Sound")
+			or descendant:IsA("Animation")
+			or descendant:IsA("MeshPart")
+			or descendant:IsA("SpecialMesh")
+			or descendant:IsA("SurfaceAppearance")
+			or descendant:IsA("ParticleEmitter")
+			or descendant:IsA("Trail")
+		then
 			targets[#targets + 1] = descendant
 		end
 	end
@@ -149,12 +153,12 @@ local function startRealLoadingStatus()
 	end
 
 	loadingStatus.Text = "Cargando: contenido del juego listo"
-	end
+end
 
 --------------------------------------------------------------
 -- ESTADO INICIAL
 --------------------------------------------------------------
-gui.Enabled = true;
+gui.Enabled = true
 logos.GroupTransparency = 1
 logo.ImageTransparency = 1
 subtitle.TextTransparency = 1
@@ -186,6 +190,14 @@ tweenWait(logos, "GroupTransparency", 0, 1, 3, Enum.EasingStyle.Sine, Enum.Easin
 
 -- [11.200 - 12.095] Fade a negro con Sine.In
 setLoadingStatus("Finalizando carga real")
-tweenWait(blk, "BackgroundTransparency", blk.BackgroundTransparency, 1, 0.895, Enum.EasingStyle.Sine, Enum.EasingDirection.In)
+tweenWait(
+	blk,
+	"BackgroundTransparency",
+	blk.BackgroundTransparency,
+	1,
+	0.895,
+	Enum.EasingStyle.Sine,
+	Enum.EasingDirection.In
+)
 
 gui.Enabled = false

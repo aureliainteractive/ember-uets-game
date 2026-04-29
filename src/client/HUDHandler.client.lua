@@ -1,6 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Players           = game:GetService("Players")
-local TweenService      = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -8,7 +8,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 local HUDContainer = playerGui:WaitForChild("HUD_VR")
 
 local ControllerUI_HUD = ReplicatedStorage:WaitForChild("ControllerUI_HUD")
-local HUDUpdate  = ReplicatedStorage:WaitForChild("HUDUpdate")
+local HUDUpdate = ReplicatedStorage:WaitForChild("HUDUpdate")
 
 local CONFIG = {
 	AnimationDuration = 0.42,
@@ -16,16 +16,16 @@ local CONFIG = {
 
 -- Referencias UI
 local UI = {
-	simulationActive  = HUDContainer:WaitForChild("SimProgreso"),
-	timeLeft          = HUDContainer:WaitForChild("TiempoRestante"),
-	score             = HUDContainer:WaitForChild("Puntuacion"),
-	progressContainer = HUDContainer:WaitForChild("ProgresoActual")
+	simulationActive = HUDContainer:WaitForChild("SimProgreso"),
+	timeLeft = HUDContainer:WaitForChild("TiempoRestante"),
+	score = HUDContainer:WaitForChild("Puntuacion"),
+	progressContainer = HUDContainer:WaitForChild("ProgresoActual"),
 }
 
 -- Labels
 local Labels = {
 	timeLeft = UI.timeLeft:WaitForChild("LabelTiempo"),
-	score    = UI.score:WaitForChild("LabelScore"),
+	score = UI.score:WaitForChild("LabelScore"),
 }
 
 -- Objetivos
@@ -34,7 +34,7 @@ local Objectives = {
 	progressFrame:WaitForChild("Obj1"),
 	progressFrame:WaitForChild("Obj2"),
 	progressFrame:WaitForChild("Obj3"),
-	progressFrame:WaitForChild("Obj4")
+	progressFrame:WaitForChild("Obj4"),
 }
 
 local ObjectiveLabels = {}
@@ -42,9 +42,9 @@ for i, obj in ipairs(Objectives) do
 	ObjectiveLabels[i] = obj:FindFirstChildWhichIsA("TextLabel", true)
 end
 
-local IMG_INCOMPLETE  = "rbxassetid://139565534034394"
+local IMG_INCOMPLETE = "rbxassetid://139565534034394"
 local IMG_IN_PROGRESS = "rbxassetid://75916766300891"
-local IMG_COMPLETE    = "rbxassetid://94228531190693"
+local IMG_COMPLETE = "rbxassetid://94228531190693"
 
 local isHUDVisible = false
 
@@ -54,10 +54,10 @@ end
 
 local function resetHUDContent()
 	Labels.timeLeft.Text = "05:00"
-	Labels.score.Text    = "100"
+	Labels.score.Text = "100"
 
 	for _, obj in ipairs(Objectives) do
-		obj.Icon.Image   = IMG_INCOMPLETE
+		obj.Icon.Image = IMG_INCOMPLETE
 		obj.Visible = true
 		if obj:FindFirstChild("Icon") then
 			obj.Icon.Image = IMG_INCOMPLETE
@@ -91,16 +91,16 @@ end
 local hudTransitionToken = 0
 
 local SHOW_POSITIONS = {
-	[UI.simulationActive]  = UDim2.new(0.15, 0, 0.05, 0),
-	[UI.timeLeft]          = UDim2.new(0.5, 0, 0.06, 0),
-	[UI.score]             = UDim2.new(0.9, 0, 0.06, 0),
+	[UI.simulationActive] = UDim2.new(0.15, 0, 0.05, 0),
+	[UI.timeLeft] = UDim2.new(0.5, 0, 0.06, 0),
+	[UI.score] = UDim2.new(0.9, 0, 0.06, 0),
 	[UI.progressContainer] = UDim2.new(0.85, 0, 0.5, 0),
 }
 
 local HIDE_POSITIONS = {
-	[UI.simulationActive]  = UDim2.new(0.15, 0, -0.2, 0),
-	[UI.timeLeft]          = UDim2.new(0.5, 0, -0.2, 0),
-	[UI.score]             = UDim2.new(0.9, 0, -0.2, 0),
+	[UI.simulationActive] = UDim2.new(0.15, 0, -0.2, 0),
+	[UI.timeLeft] = UDim2.new(0.5, 0, -0.2, 0),
+	[UI.score] = UDim2.new(0.9, 0, -0.2, 0),
 	[UI.progressContainer] = UDim2.new(1.3, 0, 0.5, 0),
 }
 
@@ -124,7 +124,9 @@ local function showHUD()
 		ui.ImageTransparency = 1
 		local pos = SHOW_POSITIONS[ui]
 		task.delay((index - 1) * STAGGER_STEP, function()
-			if token ~= hudTransitionToken or not isHUDVisible then return end
+			if token ~= hudTransitionToken or not isHUDVisible then
+				return
+			end
 			tweenUI(ui, TWEEN_IN, {
 				Position = pos,
 				ImageTransparency = DEFAULT_IMAGE_TRANSPARENCY[ui],
@@ -154,7 +156,9 @@ local function hideHUD(immediate)
 		local ui = ANIMATION_ORDER[index]
 		local pos = HIDE_POSITIONS[ui]
 		task.delay((#ANIMATION_ORDER - index) * STAGGER_STEP * 0.8, function()
-			if token ~= hudTransitionToken then return end
+			if token ~= hudTransitionToken then
+				return
+			end
 			tweenUI(ui, TWEEN_OUT, {
 				Position = pos,
 				ImageTransparency = 1,
@@ -171,23 +175,19 @@ end
 
 -- Evento remoto
 ControllerUI_HUD.OnClientEvent:Connect(function(action)
-
 	if action == "Show" then
 		showHUD()
-
 	elseif action == "Hide" then
 		hideHUD()
-
 	else
 		warn("[HUDHandler] Acción desconocida:", action)
 	end
-
 end)
 
-HUDUpdate.OnClientEvent:Connect(function(
-	timeLeft, score, completedSteps, stepNames
-)
-	if not isHUDVisible then return end
+HUDUpdate.OnClientEvent:Connect(function(timeLeft, score, completedSteps, stepNames)
+	if not isHUDVisible then
+		return
+	end
 
 	local mins = math.floor(timeLeft / 60)
 	local secs = timeLeft % 60

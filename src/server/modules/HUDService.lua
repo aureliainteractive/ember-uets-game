@@ -3,8 +3,8 @@
 --          (timer, score, objective states) to the client.
 -- Dependencies: ScoringSystem
 
-local ScoringSystem  = require(script.Parent.ScoringSystem)
-local activeTickers  = {}  -- keyed by player.UserId
+local ScoringSystem = require(script.Parent.ScoringSystem)
+local activeTickers = {} -- keyed by player.UserId
 
 local HUDService = {}
 
@@ -15,18 +15,18 @@ function HUDService.startTicker(player, session, services)
 		return
 	end
 
-	if not session
+	if
+		not session
 		or session.startTime == nil
 		or session.waypointTimes == nil
 		or session.maxTimes == nil
-		or session.stepNames == nil then
+		or session.stepNames == nil
+	then
 		warn("[HUDService] startTicker precondition failed: invalid session.")
 		return
 	end
 
-	if not services
-		or services.SIMULATION_GLOBAL_TIMEOUT == nil
-		or services.hudUpdateEvent == nil then
+	if not services or services.SIMULATION_GLOBAL_TIMEOUT == nil or services.hudUpdateEvent == nil then
 		warn("[HUDService] startTicker precondition failed: invalid services.")
 		return
 	end
@@ -37,32 +37,22 @@ function HUDService.startTicker(player, session, services)
 
 	task.spawn(function()
 		while activeTickers[player.UserId] and player.Parent do
-			local timeLeft = math.max(0, math.floor(
-				services.SIMULATION_GLOBAL_TIMEOUT
-				- (tick() - session.startTime)
-			))
+			local timeLeft = math.max(0, math.floor(services.SIMULATION_GLOBAL_TIMEOUT - (tick() - session.startTime)))
 
 			local score = 100
 			if #session.waypointTimes > 0 then
-				score = ScoringSystem.calculateScore(
-					session.waypointTimes,
-					session.maxTimes
-				)
+				score = ScoringSystem.calculateScore(session.waypointTimes, session.maxTimes)
 			end
 
 			local completedSteps = #session.waypointTimes
 
 			pcall(function()
-				services.hudUpdateEvent:FireClient(
-					player,
-					timeLeft,
-					score,
-					completedSteps,
-					session.stepNames
-				)
+				services.hudUpdateEvent:FireClient(player, timeLeft, score, completedSteps, session.stepNames)
 			end)
 
-			if timeLeft <= 0 then break end
+			if timeLeft <= 0 then
+				break
+			end
 			task.wait(1)
 		end
 		activeTickers[player.UserId] = nil

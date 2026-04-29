@@ -8,11 +8,11 @@ This document describes the internal architecture of the EMBER simulator: how th
 
 EMBER follows the standard Roblox client-server architecture.
 
-| Domain | Scripts run on | Roblox container | Folder in repo |
-|---|---|---|---|
-| **Server** | Roblox server only | `ServerScriptService` | `src/server/` |
-| **Client** | Each player's machine | `StarterPlayerScripts` | `src/client/` |
-| **Shared** | Accessible from both | `ReplicatedStorage` | `src/shared/` *(empty in repo)* |
+| Domain     | Scripts run on        | Roblox container       | Folder in repo                  |
+| ---------- | --------------------- | ---------------------- | ------------------------------- |
+| **Server** | Roblox server only    | `ServerScriptService`  | `src/server/`                   |
+| **Client** | Each player's machine | `StarterPlayerScripts` | `src/client/`                   |
+| **Shared** | Accessible from both  | `ReplicatedStorage`    | `src/shared/` _(empty in repo)_ |
 
 The server is authoritative over all simulation state. Clients only handle rendering, UI, and input.
 
@@ -42,28 +42,28 @@ Scripts on different sides cannot call each other directly. EMBER uses the follo
 
 ### RemoteEvents (Server ↔ Client, fire-and-forget)
 
-| Event name | Direction | Purpose |
-|---|---|---|
-| `ShowDialog` | Server → Client | Send a notification message to a player's dialog system |
-| `CameraShakeEvent` | Server → Client | Trigger a camera shake effect with duration and scale |
-| `ControllerUI_HUD` | Server → Client | Show or hide the simulation HUD |
-| `HUDUpdate` | Server → Client | Push live timer, score, and objective states to the HUD |
-| `KioskShowConfirmation` | Server → Client | Show or hide the kiosk ConfirmationUI screen with selection payload |
-| `ShowResults` | Server → Client | Send the completed results payload to the results screen |
-| `ToggleDoor` *(per door)* | Client → Server | Request a door toggle from a VR hand interaction |
-| `KioskConfirm` | Client → Server | Player confirms the kiosk selection |
-| `KioskCancel` | Client → Server | Player cancels the kiosk selection |
-| `ReturnToLobby` | Client → Server | Player requests teleport back to the main lobby from the results screen |
+| Event name                | Direction       | Purpose                                                                 |
+| ------------------------- | --------------- | ----------------------------------------------------------------------- |
+| `ShowDialog`              | Server → Client | Send a notification message to a player's dialog system                 |
+| `CameraShakeEvent`        | Server → Client | Trigger a camera shake effect with duration and scale                   |
+| `ControllerUI_HUD`        | Server → Client | Show or hide the simulation HUD                                         |
+| `HUDUpdate`               | Server → Client | Push live timer, score, and objective states to the HUD                 |
+| `KioskShowConfirmation`   | Server → Client | Show or hide the kiosk ConfirmationUI screen with selection payload     |
+| `ShowResults`             | Server → Client | Send the completed results payload to the results screen                |
+| `ToggleDoor` _(per door)_ | Client → Server | Request a door toggle from a VR hand interaction                        |
+| `KioskConfirm`            | Client → Server | Player confirms the kiosk selection                                     |
+| `KioskCancel`             | Client → Server | Player cancels the kiosk selection                                      |
+| `ReturnToLobby`           | Client → Server | Player requests teleport back to the main lobby from the results screen |
 
 ### BindableEvents (Server → Server, same-side signaling)
 
-| Event name | Purpose |
-|---|---|
-| `SimulationStartBindable` | External UI/trigger fires this to start a simulation |
-| `HighlightPartBindable` | Request a highlight effect on a BasePart |
-| `FinishedTaskBindable` | Mark a task as completed for a player |
-| `PhysicalActuatorBindable` | Send a command to a physical haptic actuator via HTTP |
-| `PowerControl` *(optional)* | Fire to change the global `PowerMode` attribute |
+| Event name                  | Purpose                                               |
+| --------------------------- | ----------------------------------------------------- |
+| `SimulationStartBindable`   | External UI/trigger fires this to start a simulation  |
+| `HighlightPartBindable`     | Request a highlight effect on a BasePart              |
+| `FinishedTaskBindable`      | Mark a task as completed for a player                 |
+| `PhysicalActuatorBindable`  | Send a command to a physical haptic actuator via HTTP |
+| `PowerControl` _(optional)_ | Fire to change the global `PowerMode` attribute       |
 
 ---
 
@@ -76,6 +76,7 @@ All authoritative logic runs on the server. Five scripts handle distinct concern
 The central dispatcher for all simulation types. After a major refactor, most logic has been moved into dedicated modules under `src/server/modules/`. The controller itself is now a thin coordinator.
 
 **Responsibilities:**
+
 - Requires all simulation and service modules at startup.
 - Listens to `SimulationStartBindable` and dispatches to the correct simulation module.
 - Maintains `activeSimulations` (prevents duplicate concurrent simulations per location).
@@ -85,12 +86,14 @@ The central dispatcher for all simulation types. After a major refactor, most lo
 - Builds and passes the `services` and `state` context tables to each simulation module call.
 
 **Key internal tables:**
+
 ```
 activeSimulations    -- { "SimType_Location" → true }
 playerSimulationData -- { userId → { waypointTimes, lastWaypointTime, maxTimes, ... } }
 ```
 
 **Simulation entry point:**
+
 ```
 SimulationStartBindable.Event
   └── (player, eventType, locationName, difficultyStr)
@@ -101,6 +104,7 @@ SimulationStartBindable.Event
 ```
 
 **Context tables passed to simulation modules:**
+
 ```
 services = {
   setPowerMode, canStartSimulation, setSimulationActive,
@@ -118,6 +122,7 @@ state = {
 Manages the physical in-world kiosk for simulation selection and launch.
 
 **Responsibilities:**
+
 - Detects player proximity via a `Hitbox` part `Touched`/`TouchEnded` events.
 - Runs a sequential coroutine-based flow on the kiosk `SurfaceGui`:
   1. Mode selection (`ModeSelector` frame).
@@ -136,16 +141,19 @@ Manages the physical in-world kiosk for simulation selection and launch.
 Manages all dynamic lighting across the entire map.
 
 **Responsibilities:**
+
 - Caches all `PointLight`, `SurfaceLight`, `SpotLight`, `Neon` parts, and `Glass` parts at startup.
 - Reacts to the `PowerMode` attribute on the `Lighting` service (values: `NORMAL`, `BLACKOUT`, `FORCE_ON`).
 - On each state change, updates light brightness/color, material (Neon ↔ SmoothPlastic), and glass transparency using TweenService for smooth transitions.
-- Supports an `Emergency` tag/attribute on individual instances, which inverts their behavior during a blackout (emergency lights turn *on* when power goes *off*).
+- Supports an `Emergency` tag/attribute on individual instances, which inverts their behavior during a blackout (emergency lights turn _on_ when power goes _off_).
 - Polls every 2 seconds as a safety net for missed changes.
 
 **State key:**
+
 ```
 lastAppliedKey = "NORMAL|D"  -- mode + day/night flag
 ```
+
 Changes are only applied when the key actually changes, preventing redundant updates.
 
 ### 4.4 CycleController (`src/server/CycleController.server.lua`)
@@ -153,6 +161,7 @@ Changes are only applied when the key actually changes, preventing redundant upd
 Drives the in-game day/night cycle.
 
 **Responsibilities:**
+
 - Increments `Lighting.ClockTime` every heartbeat based on `DAY_LENGTH_SECONDS` (default: 30 real seconds = 24 game hours).
 - Freezes the clock at midnight (`ClockTime = 0`) when `PowerMode == "BLACKOUT"` and resets atmosphere density.
 
@@ -161,12 +170,14 @@ Drives the in-game day/night cycle.
 Centralized server coordinator for all interactive doors.
 
 **Responsibilities:**
+
 - Scans `workspace` for `Model` instances with a `DoorType` attribute.
 - Initializes each door via modular handlers based on `DoorType`.
 - Supports runtime door models via `workspace.DescendantAdded` initialization.
 - Leaves client interaction contract unchanged (`ToggleDoor` RemoteEvent is still fired by `VRDoorInteractor`).
 
 **Door modules:**
+
 - `src/server/modules/doors/HingeDoor.lua` — Hinge doors (CFrame rotation around `Hinge`).
 - `src/server/modules/doors/SlidingDoor.lua` — Sliding doors (positional offset from `SlidePivot`).
 
@@ -174,18 +185,18 @@ Centralized server coordinator for all interactive doors.
 
 Reusable ModuleScripts required by the server scripts above.
 
-| Module | Purpose |
-|---|---|
-| `ActuatorConfig` | Holds `API_URL` and `API_KEY` for the physical actuator HTTP API |
-| `ActuatorService` | Fires actuator commands via `HttpService:PostAsync` with callback |
-| `DialogService` | Safe wrapper for `ShowDialog:FireClient` with player validation |
-| `HUDService` | Per-player ticker loop that pushes live timer/score/objectives via `HUDUpdate` |
-| `NavigationUtils` | Teleport, waypoint lookup, refuge lookup, highlight, and touch detection helpers |
-| `ScoringSystem` | `calculateScore()`, `getGrade()`, and legacy `showFinalResults()` (dialog-based) |
-| `ResultsSystem` | Computes rank payload and fires it to the client via `ShowResults` RemoteEvent; also handles `ReturnToLobby` |
-| `FireSimulation` | Complete fire drill flow, procedural fire spread, and firefighter NPC management |
-| `EarthquakeSimulation` | Complete earthquake drill flow, physics drops, and aftershock sequences |
-| `ArmedGroupsSimulation` | Complete armed-groups drill flow including NPC spawning and death detection |
+| Module                  | Purpose                                                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `ActuatorConfig`        | Holds `API_URL` and `API_KEY` for the physical actuator HTTP API                                             |
+| `ActuatorService`       | Fires actuator commands via `HttpService:PostAsync` with callback                                            |
+| `DialogService`         | Safe wrapper for `ShowDialog:FireClient` with player validation                                              |
+| `HUDService`            | Per-player ticker loop that pushes live timer/score/objectives via `HUDUpdate`                               |
+| `NavigationUtils`       | Teleport, waypoint lookup, refuge lookup, highlight, and touch detection helpers                             |
+| `ScoringSystem`         | `calculateScore()`, `getGrade()`, and legacy `showFinalResults()` (dialog-based)                             |
+| `ResultsSystem`         | Computes rank payload and fires it to the client via `ShowResults` RemoteEvent; also handles `ReturnToLobby` |
+| `FireSimulation`        | Complete fire drill flow, procedural fire spread, and firefighter NPC management                             |
+| `EarthquakeSimulation`  | Complete earthquake drill flow, physics drops, and aftershock sequences                                      |
+| `ArmedGroupsSimulation` | Complete armed-groups drill flow including NPC spawning and death detection                                  |
 
 ---
 
@@ -202,6 +213,7 @@ A self-contained dialog notification system.
 **Design pattern:** Object-with-methods table (`DialogSystem`), acting as a lightweight class.
 
 **Key behaviors:**
+
 - Maintains a priority queue (max 6 items). Error-priority messages clear the queue.
 - Duplicate suppression: identical messages within a 2-second window are dropped.
 - Each message animates in (slide up with Back easing), plays a typewriter text effect, waits for a calculated display time, then animates out.
@@ -212,6 +224,7 @@ A self-contained dialog notification system.
 Controls the visibility of the simulation HUD elements.
 
 **Key behaviors:**
+
 - Listens to `ControllerUI_HUD` RemoteEvent for `"Show"` or `"Hide"` actions.
 - Listens to `HUDUpdate` RemoteEvent to receive live timer, score, and objective state updates pushed by `HUDService`.
 - Animates four UI panels (simulation status, time remaining, score, objectives) using TweenService with per-element SHOW/HIDE position tables.
@@ -222,6 +235,7 @@ Controls the visibility of the simulation HUD elements.
 Applies procedural camera shake on the client.
 
 **Key behaviors:**
+
 - Listens to `CameraShakeEvent` RemoteEvent.
 - Detects VR via `VRService.VREnabled` and chooses a different shake implementation:
   - **Non-VR:** Directly offsets `camera.CFrame` using a multi-frequency sine wave composite.
@@ -233,6 +247,7 @@ Applies procedural camera shake on the client.
 Displays a summary of the player's kiosk selection and collects the final confirm action before starting a simulation.
 
 **Key behaviors:**
+
 - Listens to `KioskShowConfirmation` RemoteEvent from the server. Payload is `{ mode, location, diff }` to show, or `nil` to hide.
 - Reads step names from `KioskConfig.getSteps(mode).stepNamesDetailed` to populate `Objective1`–`Objective4` labels.
 - Animates three UI elements (`Panel`, `Controles`, `btnConfirm`) in with a staggered Quint slide-up effect.
@@ -249,6 +264,7 @@ Displays a summary of the player's kiosk selection and collects the final confir
 Displays the detailed simulation results screen after a simulation ends.
 
 **Key behaviors:**
+
 - Listens to `ShowResults` RemoteEvent. Payload is a table computed by `ResultsSystem.compute()`.
 - Populates rank label (`LabelRank`) with colour-coded rank text, rank band image (`RankContainer`), points, time, precision %, critical errors, and objective counts.
 - Populates per-step rows (`Steps/Step1`–`Step4`): each row shows step name, elapsed time, and points.
@@ -271,6 +287,7 @@ Displays the detailed simulation results screen after a simulation ends.
 Handles door interaction in VR using hand raycasting.
 
 **Key behaviors:**
+
 - Reads VR hand CFrames from `NexusVRCharacterModel`'s `VRInputService` singleton.
 - On `ButtonR2` or `ButtonL2` gamepad input, fires a raycast from the corresponding hand up to 2 studs forward.
 - Walks up the instance hierarchy of the hit result looking for a `ToggleDoor` RemoteEvent.
@@ -281,6 +298,7 @@ Handles door interaction in VR using hand raycasting.
 Plays the intro/loading sequence when a player first joins.
 
 **Key behaviors:**
+
 - Waits for `game:IsLoaded()`.
 - Runs a scripted tween timeline: title/subtitle fade in → pause → fade out → logo fade in → logo fade out → black screen fade → hide GUI.
 - All steps are sequential and time-coded.
@@ -294,6 +312,7 @@ Plays the intro/loading sequence when a player first joins.
 The single source of truth for all kiosk-driven simulation configuration. Located at `ReplicatedStorage.Shared.KioskConfig` so it is accessible from both server and client scripts.
 
 **Contents:**
+
 - `MODES` — list of simulation mode entries with `name`, `display`, and `description` fields.
 - `DIFFICULTIES` — list of difficulty entries with `name`, `display`, `level` (1/2/3), and `description` fields.
 - `SIMULATION_STEPS` — per-simulation-type tables containing `stepNames` (short, used in HUD), `stepNamesDetailed` (used in ConfirmationUI), `maxTimes` (seconds per step, used by `ScoringSystem`), and a `description` string.
@@ -355,18 +374,18 @@ The following shows a typical flow when a player uses the kiosk to start a Fire 
 
 ## 8. Design Patterns
 
-| Pattern | Where used |
-|---|---|
-| **Server-authoritative state** | All simulation logic, scoring, and world changes run on the server |
-| **Event-driven coordination** | BindableEvents and RemoteEvents decouple systems |
-| **Modular simulation architecture** | Each simulation type is a separate module under `src/server/modules/`, receiving `services` and `state` context tables |
-| **Procedural generation** | Fire spread and earthquake object selection are randomized at runtime |
-| **Caching + dirty-flag** | `GlobalLightingController` caches scene objects and uses `lastAppliedKey` to skip redundant updates |
-| **Lightweight OOP (table as object)** | `DialogSystem` in `DialogHandler` uses a Lua table with methods |
-| **Parallel tasks** | `task.spawn` is used for fire propagation, aftershock sequences, and dialog processing without blocking the main coroutine |
-| **Global timeout safety net** | Each simulation module uses `task.delay(SIMULATION_GLOBAL_TIMEOUT, ...)` to force-end any simulation that exceeds 5 minutes |
-| **Client-triggered lobby return** | Results are pushed to the client via `ShowResults`; the player explicitly triggers return via `ReturnToLobby`, keeping server logic stateless for that step |
-| **Shared config module** | `KioskConfig` (in `src/shared/`) is the single source of truth for step names, max times, and display strings, used by both server modules and client scripts |
+| Pattern                               | Where used                                                                                                                                                    |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Server-authoritative state**        | All simulation logic, scoring, and world changes run on the server                                                                                            |
+| **Event-driven coordination**         | BindableEvents and RemoteEvents decouple systems                                                                                                              |
+| **Modular simulation architecture**   | Each simulation type is a separate module under `src/server/modules/`, receiving `services` and `state` context tables                                        |
+| **Procedural generation**             | Fire spread and earthquake object selection are randomized at runtime                                                                                         |
+| **Caching + dirty-flag**              | `GlobalLightingController` caches scene objects and uses `lastAppliedKey` to skip redundant updates                                                           |
+| **Lightweight OOP (table as object)** | `DialogSystem` in `DialogHandler` uses a Lua table with methods                                                                                               |
+| **Parallel tasks**                    | `task.spawn` is used for fire propagation, aftershock sequences, and dialog processing without blocking the main coroutine                                    |
+| **Global timeout safety net**         | Each simulation module uses `task.delay(SIMULATION_GLOBAL_TIMEOUT, ...)` to force-end any simulation that exceeds 5 minutes                                   |
+| **Client-triggered lobby return**     | Results are pushed to the client via `ShowResults`; the player explicitly triggers return via `ReturnToLobby`, keeping server logic stateless for that step   |
+| **Shared config module**              | `KioskConfig` (in `src/shared/`) is the single source of truth for step names, max times, and display strings, used by both server modules and client scripts |
 
 ---
 

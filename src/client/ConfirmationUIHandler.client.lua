@@ -21,26 +21,24 @@
 --   KioskConfirm           Client → Server  player confirmed
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService      = game:GetService("TweenService")
-local Players           = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
 
-local player    = Players.LocalPlayer
+local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local KioskConfig = require(
-	ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig")
-)
+local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 
 local showConfirmationEvent = ReplicatedStorage:WaitForChild("KioskShowConfirmation")
-local confirmEvent          = ReplicatedStorage:WaitForChild("KioskConfirm")
+local confirmEvent = ReplicatedStorage:WaitForChild("KioskConfirm")
 
 -- ── UI REFERENCES ──────────────────────────────────────────────────
 
-local Screen     = playerGui:WaitForChild("ConfirmationUI")          -- ScreenGui
-local Panel      = Screen:WaitForChild("Panel")                      -- ImageLabel (animated)
-local Controles  = Screen:WaitForChild("Controles")                  -- ImageLabel (animated)
-local Objectives = Panel:WaitForChild("Objectives")                  -- Frame (UIGridLayout)
-local btnConfirm = Screen:WaitForChild("Confirmar")                  -- ImageButton
+local Screen = playerGui:WaitForChild("ConfirmationUI") -- ScreenGui
+local Panel = Screen:WaitForChild("Panel") -- ImageLabel (animated)
+local Controles = Screen:WaitForChild("Controles") -- ImageLabel (animated)
+local Objectives = Panel:WaitForChild("Objectives") -- Frame (UIGridLayout)
+local btnConfirm = Screen:WaitForChild("Confirmar") -- ImageButton
 
 -- Objective TextLabels (Objective1–Objective4)
 local ObjectiveLabels = {
@@ -51,7 +49,7 @@ local ObjectiveLabels = {
 }
 
 -- ── ANIMATION ──────────────────────────────────────────────────────
-local TWEEN_IN  = TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local TWEEN_IN = TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 local TWEEN_OUT = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 local STAGGER_STEP = 0.05
 local ANIMATION_ORDER = { Panel, Controles, btnConfirm }
@@ -95,7 +93,9 @@ local function showUI()
 	for index, ui in ipairs(ANIMATION_ORDER) do
 		local visiblePos = VISIBLE_POSITIONS[ui]
 		task.delay((index - 1) * STAGGER_STEP, function()
-			if token ~= transitionToken or not Screen.Enabled then return end
+			if token ~= transitionToken or not Screen.Enabled then
+				return
+			end
 			TweenService:Create(ui, TWEEN_IN, {
 				Position = visiblePos,
 				ImageTransparency = DEFAULT_IMAGE_TRANSPARENCY[ui],
@@ -111,7 +111,9 @@ local function hideUI()
 		local ui = ANIMATION_ORDER[index]
 		local hiddenPos = HIDDEN_POSITIONS[ui]
 		task.delay((#ANIMATION_ORDER - index) * STAGGER_STEP * 0.8, function()
-			if token ~= transitionToken then return end
+			if token ~= transitionToken then
+				return
+			end
 			TweenService:Create(ui, TWEEN_OUT, {
 				Position = hiddenPos,
 				ImageTransparency = 1,
@@ -127,16 +129,16 @@ end
 
 -- ── POPULATE ───────────────────────────────────────────────────────
 local function populate(mode)
-	local steps   = KioskConfig.getSteps(mode)
+	local steps = KioskConfig.getSteps(mode)
 	local detailed = steps.stepNamesDetailed or {}
 
 	for i, label in ipairs(ObjectiveLabels) do
 		local text = detailed[i]
 		if text then
-			label.Text    = i .. ". " .. text
+			label.Text = i .. ". " .. text
 			label.Visible = true
 		else
-			label.Text    = ""
+			label.Text = ""
 			label.Visible = false
 		end
 	end
@@ -144,7 +146,9 @@ end
 
 -- ── BUTTON HANDLING ────────────────────────────────────────────────
 btnConfirm.Activated:Connect(function()
-	if not Screen.Enabled then return end
+	if not Screen.Enabled then
+		return
+	end
 	hideUI()
 	pcall(function()
 		confirmEvent:FireServer()

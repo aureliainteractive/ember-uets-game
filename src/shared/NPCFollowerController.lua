@@ -13,12 +13,14 @@ local function getOrCreateStartEvent(npcModel)
 	end
 
 	if startEvent and not startEvent:IsA("BindableEvent") then
-		warn(string.format(
-			"[NPCFollowerController] %s.%s exists but is %s. Replacing with BindableEvent.",
-			npcModel:GetFullName(),
-			START_EVENT_NAME,
-			startEvent.ClassName
-		))
+		warn(
+			string.format(
+				"[NPCFollowerController] %s.%s exists but is %s. Replacing with BindableEvent.",
+				npcModel:GetFullName(),
+				START_EVENT_NAME,
+				startEvent.ClassName
+			)
+		)
 		startEvent:Destroy()
 	end
 

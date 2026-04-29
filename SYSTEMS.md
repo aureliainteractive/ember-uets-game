@@ -38,6 +38,7 @@ This document describes each major system in the EMBER simulator, its purpose, t
 **Script:** `src/server/SimulationController.server.lua`
 
 **Responsibilities:**
+
 - Requires simulation modules (`FireSimulation`, `EarthquakeSimulation`, `ArmedGroupsSimulation`) and service modules at startup.
 - Listens to `SimulationStartBindable` (BindableEvent) and dispatches to the correct simulation module based on `eventType`.
 - Prevents duplicate concurrent simulations for the same type and location using `activeSimulations`.
@@ -48,11 +49,13 @@ This document describes each major system in the EMBER simulator, its purpose, t
 - Each simulation module independently enforces a global 5-minute safety timeout.
 
 **Input event:**
+
 ```
 SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 ```
 
 **Interacts with:**
+
 - Dialog Notification System (via `DialogService`)
 - HUD System (via `ControllerUI_HUD` RemoteEvent and `HUDService` ticker)
 - Camera Shake System (via `CameraShakeEvent` RemoteEvent)
@@ -72,6 +75,7 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 **Script:** `src/server/modules/FireSimulation.lua` — function `FireSimulation.start()`
 
 **Protocol steps:**
+
 1. Locate the fire origin (proximity detection within 40 studs).
 2. Activate the fire alarm (reach Waypoint2).
 3. Evacuate the building (reach Waypoint3).
@@ -79,11 +83,11 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 
 **Difficulty parameters:**
 
-| Level | Fire duration | Heater activation delay |
-|---|---|---|
-| Easy (1) | 55 s | 35 s |
-| Medium (2) | 70 s | 25 s |
-| Hard (3) | 90 s | 18 s |
+| Level      | Fire duration | Heater activation delay |
+| ---------- | ------------- | ----------------------- |
+| Easy (1)   | 55 s          | 35 s                    |
+| Medium (2) | 70 s          | 25 s                    |
+| Hard (3)   | 90 s          | 18 s                    |
 
 **Procedural fire subsystem:**
 
@@ -94,11 +98,11 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 
 **Fire effect parameters by difficulty:**
 
-| Level | Spread radius | Parts/wave | Wave interval | Max burning |
-|---|---|---|---|---|
-| Easy | 18 studs | 6 | 4.0 s | 100 |
-| Medium | 26 studs | 10 | 3.0 s | 150 |
-| Hard | 35 studs | 14 | 2.0 s | 200 |
+| Level  | Spread radius | Parts/wave | Wave interval | Max burning |
+| ------ | ------------- | ---------- | ------------- | ----------- |
+| Easy   | 18 studs      | 6          | 4.0 s         | 100         |
+| Medium | 26 studs      | 10         | 3.0 s         | 150         |
+| Hard   | 35 studs      | 14         | 2.0 s         | 200         |
 
 **Interacts with:** Simulation Controller, Global Lighting System, Firefighter NPC Manager, Waypoint Detection System, Dialog System, Camera Shake System, Physical Actuator Integration, Scoring System.
 
@@ -111,17 +115,18 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 **Script:** `src/server/modules/EarthquakeSimulation.lua` — function `EarthquakeSimulation.start()`
 
 **Protocol steps:**
+
 1. Shelter in place at a designated refuge point.
 2. Evacuate the building (reach Waypoint2).
 3. Reach the external safe zone (Waypoint3).
 
 **Difficulty parameters:**
 
-| Level | Shake duration | Shake scale | Pre-alert time |
-|---|---|---|---|
-| Easy (1) | 10 s | 3.0 | 6 s |
-| Medium (2) | 15 s | 5.0 | 5 s |
-| Hard (3) | 20 s | 7.0 | 4 s |
+| Level      | Shake duration | Shake scale | Pre-alert time |
+| ---------- | -------------- | ----------- | -------------- |
+| Easy (1)   | 10 s           | 3.0         | 6 s            |
+| Medium (2) | 15 s           | 5.0         | 5 s            |
+| Hard (3)   | 20 s           | 7.0         | 4 s            |
 
 **Procedural drop subsystem:**
 
@@ -131,14 +136,15 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 
 **Objects dropped by difficulty:**
 
-| Category | Easy | Medium | Hard |
-|---|---|---|---|
-| Stucco tiles | 320 | 420 | 560 |
-| TVs | 10 | 18 | 28 |
-| Pillars | 12 | 22 | 35 |
-| Ceiling lights | 58 | 80 | 105 |
+| Category       | Easy | Medium | Hard |
+| -------------- | ---- | ------ | ---- |
+| Stucco tiles   | 320  | 420    | 560  |
+| TVs            | 10   | 18     | 28   |
+| Pillars        | 12   | 22     | 35   |
+| Ceiling lights | 58   | 80     | 105  |
 
 **Aftershock subsystem (`triggerAftershocks`):**
+
 - Fires 2–5 additional camera shake events at regular intervals after the main event.
 - Each aftershock has a randomized duration (2–4 s) and scale (1.0–2.5).
 
@@ -153,6 +159,7 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 **Script:** `src/server/modules/ArmedGroupsSimulation.lua` — function `ArmedGroupsSimulation.start()`
 
 **Protocol steps:**
+
 1. Activate the institutional alert (reach Waypoint1 — panic button).
 2. Shelter in a designated safe room (reach a Refuge point).
 3. Proceed to the authority verification point (reach Waypoint3).
@@ -160,18 +167,20 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 
 **Difficulty parameters:**
 
-| Level | NPC count | Pre-alert time |
-|---|---|---|
-| Easy (1) | 2 NPCs | 7 s |
-| Medium (2) | 4 NPCs | 5 s |
-| Hard (3) | 6 NPCs | 4 s |
+| Level      | NPC count | Pre-alert time |
+| ---------- | --------- | -------------- |
+| Easy (1)   | 2 NPCs    | 7 s            |
+| Medium (2) | 4 NPCs    | 5 s            |
+| Hard (3)   | 6 NPCs    | 4 s            |
 
 **NPC spawning:**
+
 - Retrieves `BasePart`, `Model`, or `Attachment` children from `AtacantsSpawns/<locationName>/`.
 - Shuffles spawn points using Fisher-Yates, then clones the `Atacant NPC` from `ReplicatedStorage` for each NPC and pivots it to the spawn CFrame.
 - All spawned NPCs are destroyed when the simulation ends (success or death).
 
 **Death detection:**
+
 - Connects to `Humanoid.Died` on the player's character at simulation start.
 - If triggered, calls `endArmedGroupsByDeath()`, which cleans up NPCs, resets state, and teleports the player back to the lobby with a penalty dialog.
 
@@ -186,6 +195,7 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 **Script:** `src/server/SimulationController.server.lua` — function `startExploreSimulation()` (inline, not in a separate module)
 
 **Behavior:**
+
 - Teleports the player to the `FireSimulation` spawn (reuses same spawn points).
 - Plays background music on the `Intercom/AudioPlayer` (looped).
 - Shows the HUD.
@@ -200,49 +210,53 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 **Purpose:** Measures player performance at each step of a simulation, computes a rank, and presents detailed results on a dedicated screen.
 
 **Scripts:**
+
 - `src/server/modules/ScoringSystem.lua` — legacy score helpers (used by `HUDService` for the live score display).
 - `src/server/modules/ResultsSystem.lua` — authoritative results computation and delivery (fires `ShowResults` RemoteEvent).
 - `src/client/ResultsScreenHandler.client.lua` — receives and displays the results payload on the client.
 
 **ScoringSystem (live score, used by HUDService):**
+
 - `calculateScore(times, maxTimes)` — returns an average 0–100 score, mapping each step's time-to-max ratio:
 
-| Time vs. max | Points |
-|---|---|
-| ≤ 70% of max | 100 |
-| ≤ 100% of max | 85 |
-| ≤ 130% of max | 70 |
-| > 130% of max | 50 |
+| Time vs. max  | Points |
+| ------------- | ------ |
+| ≤ 70% of max  | 100    |
+| ≤ 100% of max | 85     |
+| ≤ 130% of max | 70     |
+| > 130% of max | 50     |
 
 - `getGrade(score)` — maps score to legacy grade string (EXCELENTE / BUENO / REGULAR / NECESITA MEJORAR).
 
 **ResultsSystem (end-of-simulation):**
+
 - Each step earns points from a finer-grained scale:
 
-| Time vs. max | Points |
-|---|---|
-| ≤ 50% of max | 1000 (Perfect) |
-| ≤ 70% of max | 800 (Excellent) |
+| Time vs. max  | Points          |
+| ------------- | --------------- |
+| ≤ 50% of max  | 1000 (Perfect)  |
+| ≤ 70% of max  | 800 (Excellent) |
 | ≤ 100% of max | 600 (Completed) |
-| ≤ 130% of max | 400 (Late) |
+| ≤ 130% of max | 400 (Late)      |
 | > 130% of max | 200 (Very Late) |
 
 - The rank is assigned based on total points earned as a ratio of the maximum possible (`stepCount × 1000`):
 
 | Ratio | Rank |
-|---|---|
-| ≥ 90% | S |
-| ≥ 80% | A+ |
-| ≥ 70% | A |
-| ≥ 60% | B+ |
-| ≥ 50% | B |
-| ≥ 40% | C+ |
-| ≥ 30% | C |
-| < 30% | D |
+| ----- | ---- |
+| ≥ 90% | S    |
+| ≥ 80% | A+   |
+| ≥ 70% | A    |
+| ≥ 60% | B+   |
+| ≥ 50% | B    |
+| ≥ 40% | C+   |
+| ≥ 30% | C    |
+| < 30% | D    |
 
 - Additional metrics computed: `precision` (total budget / total used × 100%), `criticalErrors` (steps where time > 1.5× max), `totalTime` (MM:SS), `objectivesDone` / `objectivesTotal`.
 
 **Results delivery:**
+
 - `ResultsSystem.show()` fires `ShowResults:FireClient(player, payload)` after a 2-second delay.
 - `ResultsScreenHandler` receives the payload, populates the results screen, and animates it in.
 - The player clicks the return button, which fires `ReturnToLobby:FireServer()`.
@@ -259,19 +273,23 @@ SimulationStartBindable:Fire(player, eventType, locationName, difficultyStr)
 **Script:** `src/server/modules/NavigationUtils.lua` — functions `setupWaypointDetection()`, `setupRefugeDetection()`, `getWaypoint()`, `getRefuges()`
 
 **Waypoint detection:**
+
 - Connects a `Touched` event on the target `BasePart`.
 - Validates that the touching part belongs to the player's `Character` and has a `Humanoid`.
 - Auto-disconnects after the first valid touch and calls the provided callback.
 
 **Refuge detection:**
+
 - Connects `Touched` on all refuge parts simultaneously.
 - A shared `reached` flag prevents double-firing.
 - All connections are disconnected once any refuge is touched.
 
 **Highlight integration:**
+
 - `highlightPart()` / `highlightRefuges()` clone a `HighlightTemplate` from `ReplicatedStorage` onto the target part and set its `Transparency` to 0 (or reverse to hide it).
 
 **Workspace folder convention:**
+
 ```
 Waypoints/<locationName>/<simType>/Waypoint1, Waypoint2, ...
 Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
@@ -290,6 +308,7 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 **Architecture:** Single `DialogSystem` Lua table with methods (lightweight OOP).
 
 **Features:**
+
 - **Priority queue** (max 6 items). Inserting an `Error`-priority message clears all pending messages instantly.
 - **Duplicate suppression:** identical messages within 2 seconds are silently dropped.
 - **Typewriter animation:** text is revealed character-by-character at 22 chars/second.
@@ -320,6 +339,7 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 **Script:** `src/client/HUDHandler.client.lua`
 
 **Features:**
+
 - Responds to `ControllerUI_HUD` RemoteEvent with `"Show"` or `"Hide"` action strings.
 - Responds to `HUDUpdate` RemoteEvent: receives `(timeLeft, score, completedSteps, stepNames)` pushed once per second by the server-side `HUDService` ticker and updates the live display.
 - Animates four UI panels with TweenService (Back easing): each panel has a defined `SHOW_POSITIONS` and `HIDE_POSITIONS` entry.
@@ -345,10 +365,12 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 **Script:** `src/client/CameraShakeHandler.client.lua`
 
 **Features:**
+
 - Triggered by `CameraShakeEvent` RemoteEvent with `(duration, scale)` parameters.
 - Automatically detects VR mode via `VRService.VREnabled` and uses the appropriate implementation:
 
 **Non-VR shake:**
+
 - Runs on `RunService.RenderStepped`.
 - Composites three sine/cosine waves at different frequencies for an organic feel.
 - Applies an offset to `camera.CFrame` (position Y + rotation X).
@@ -356,6 +378,7 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 - Fade-in: first 15% of duration. Fade-out: last 20% of duration. Easing: cubic in-out.
 
 **VR shake (`shakeVR`):**
+
 - Uses `Humanoid.CameraOffset` instead of direct CFrame modification.
 - Amplitude is capped at ×0.5 of the normal intensity to prevent motion sickness.
 - Resets `CameraOffset` to `Vector3.zero` when complete.
@@ -375,21 +398,24 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 
 **Power modes** (stored as `Lighting` attribute `PowerMode`):
 
-| Mode | Effect |
-|---|---|
-| `NORMAL` | Lights follow day/night cycle |
+| Mode       | Effect                                                      |
+| ---------- | ----------------------------------------------------------- |
+| `NORMAL`   | Lights follow day/night cycle                               |
 | `BLACKOUT` | All non-emergency lights off instantly; emergency lights on |
-| `FORCE_ON` | All lights on regardless of time |
+| `FORCE_ON` | All lights on regardless of time                            |
 
 **Object categories managed:**
+
 - **Lights** (`PointLight`, `SurfaceLight`, `SpotLight`): brightness and color tweened on transition; instant on blackout.
 - **Neon parts** (`Material == Neon` or tagged `Emergency`): material swapped between `Neon` and `SmoothPlastic`.
 - **Glass parts** (`Material == Glass`): transparency tweened between day (0.6) and night (0.8) values.
 
 **Emergency behavior:**
+
 - Parts tagged with `CollectionService` tag `"Emergency"` or attribute `Emergency = true` are inverted: they turn **on** during `BLACKOUT` and follow normal rules otherwise.
 
 **Performance optimizations:**
+
 - Full scene cache built once at startup (`buildCache`). New descendants are added via `workspace.DescendantAdded`.
 - Cache is cleaned of destroyed instances before each apply cycle.
 - A `lastAppliedKey` dirty flag (`"MODE|D/N"`) prevents redundant updates.
@@ -406,6 +432,7 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 **Script:** `src/server/CycleController.server.lua`
 
 **Behavior:**
+
 - Default cycle: 24 game hours complete in 30 real seconds (`DAY_LENGTH_SECONDS`).
 - Runs on `RunService.Heartbeat` for smooth per-frame advancement.
 - When `PowerMode == "BLACKOUT"`: freezes clock at `ClockTime = 0` (midnight) and sets `Atmosphere.Density = 0.6` for a foggy blackout look.
@@ -422,6 +449,7 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 **Script:** `src/client/VRDoorInteractor.client.lua`
 
 **Mechanism:**
+
 1. Listens for `ButtonR2` (right trigger) or `ButtonL2` (left trigger) via `UserInputService.InputBegan`.
 2. Retrieves the current VR hand CFrame from `NexusVRCharacterModel`'s `VRInputService` singleton.
 3. Transforms the hand CFrame from head-relative space to world space using the camera's render CFrame.
@@ -430,6 +458,7 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 6. If found, fires `ToggleDoor:FireServer()` to request the door toggle on the server.
 
 **Dependencies:**
+
 - `NexusVRCharacterModel` module in `ReplicatedStorage` (not in this repository).
 - A `ToggleDoor` RemoteEvent child on any interactive door assembly in the workspace.
 
@@ -445,16 +474,16 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 
 **Timeline:**
 
-| Time | Event |
-|---|---|
-| 0.0 s | Wait for `game:IsLoaded()` + 0.5 s buffer |
-| 0.0–2.2 s | Title and subtitle text fade in |
-| 2.2–3.2 s | Hold |
-| 3.2–4.7 s | Title and subtitle fade out |
-| 4.7–8.2 s | Logo group fades in (3.5 s) |
-| 8.2–11.2 s | Logo group fades out (3.0 s) |
-| 11.2–12.1 s | Black panel fades out (0.895 s) |
-| 12.1 s | ScreenGui disabled |
+| Time        | Event                                     |
+| ----------- | ----------------------------------------- |
+| 0.0 s       | Wait for `game:IsLoaded()` + 0.5 s buffer |
+| 0.0–2.2 s   | Title and subtitle text fade in           |
+| 2.2–3.2 s   | Hold                                      |
+| 3.2–4.7 s   | Title and subtitle fade out               |
+| 4.7–8.2 s   | Logo group fades in (3.5 s)               |
+| 8.2–11.2 s  | Logo group fades out (3.0 s)              |
+| 11.2–12.1 s | Black panel fades out (0.895 s)           |
+| 12.1 s      | ScreenGui disabled                        |
 
 **UI dependencies:** `LoadingContainer` ScreenGui with children `Logos` (Frame with `GroupTransparency`), `BLK` (black overlay Frame with `title` and `subtitle` TextLabels).
 
@@ -469,6 +498,7 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 **Script:** `src/server/modules/FireSimulation.lua` — functions `FireSimulation.initializeFirefighters()`, `FireSimulation.hideFirefighters()`, `FireSimulation.showFirefighters()`
 
 **Mechanism:**
+
 - On first call to `initializeFirefighters()`, scans `FireWaypoints/Firefighters/` for all `HumanoidRootPart` BaseParts and saves their original `CFrame` and `Anchored` state.
 - `hideFirefighters()` — anchors each HRP and moves it 100 studs below its original position. Zeroes all velocity.
 - `showFirefighters()` — restores each HRP to its original CFrame and anchored state.
@@ -483,6 +513,7 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 **Purpose:** Sends commands to external hardware (haptic feedback actuators in the physical VR cabin) via an HTTP API.
 
 **Scripts:**
+
 - `src/server/modules/ActuatorService.lua` — sends the HTTP request.
 - `src/server/modules/ActuatorConfig.lua` — stores `API_URL` and `API_KEY`.
 - `src/server/SimulationController.server.lua` — `PhysicalActuatorBindable` handler (routes external calls to `ActuatorService.fire()`).
@@ -490,12 +521,14 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 **Trigger:** `PhysicalActuatorBindable:Fire(player, actuatorName, value, duration, callback)`
 
 **Behavior:**
+
 - Constructs a JSON payload: `{ actuator, value, duration, player: userId, timestamp }`.
 - Posts to `{API_URL}/actuator` with a Bearer token authorization header using `HttpService:PostAsync`.
 - Uses `pcall` to catch network errors. On failure, logs a warning and calls `callback(false, "Error de conexion...")`.
 - On success, calls `callback(true, result)`.
 
 **Current usage in simulations:**
+
 - Fire Simulation: activates a heater actuator (`<locationName>_Heater`) after a configurable delay, for the duration of the fire.
 
 **Security note:** `ActuatorConfig.lua` contains placeholder values. Do not commit real credentials. Consider fetching from DataStore or a secure BindableFunction resolver for production use.
@@ -509,24 +542,29 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 **Purpose:** Centralized management of all interactive doors.
 
 **Key scripts:**
+
 - `src/server/DoorSystem.server.lua`
 - `src/server/modules/doors/HingeDoor.lua`
 - `src/server/modules/doors/SlidingDoor.lua`
 
 **Configuration:**
+
 - Stored as Attributes on each door `Model`.
 - Hinge attributes: `DoorType`, `OpenAngle`, `OpenTime`, `Cooldown`.
 - Sliding attributes: `DoorType`, `SlideDistance`, `SlideTime`, `SlideDirection`, `Cooldown`.
 
 **Client interaction:**
+
 - `VRDoorInteractor.client.lua` fires `ToggleDoor:FireServer()`.
 - Server receives this through each door model's `ToggleDoor` `RemoteEvent`.
 
 **Door types:**
+
 - **Hinge** — CFrame rotation around the `Hinge` part.
 - **Sliding** — Positional offset driven by `SlidePivot`.
 
 **How it interacts with other systems:**
+
 - Independent from simulation modules and scoring flow.
 - Uses the same existing `ToggleDoor` contract and does not modify client-side VR interaction logic.
 
@@ -539,6 +577,7 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 **Script:** `src/server/KioskController.server.lua`
 
 **Mechanism:**
+
 1. A player steps onto the `Hitbox` part near the kiosk. A "Start" button appears on the kiosk `SurfaceGui`.
 2. The player clicks Start — `startConfig()` coroutine begins:
    - `ModeSelector` frame shown → player selects a simulation type button.
@@ -556,6 +595,7 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 **RemoteEvents created at startup (if not already present):** `KioskShowConfirmation`, `KioskConfirm`, `KioskCancel`.
 
 **Place file dependencies:**
+
 - `workspace.Menu` → Model containing `MenuScreen` (Part with `SurfaceGui`) and `Hitbox` (BasePart).
 - `SurfaceGui` children: `StartConfig`, `ModeSelector`, `LocationSelector`, `DiffSelector`, `BLK` (with `WaitingLabel` and `infoLabel`), `ConfirmationLabels`, `ConfirmationInfo` (with `modeLabel`, `diffLabel`, `locationLabel`).
 
@@ -570,6 +610,7 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 **Script:** `src/client/ConfirmationUIHandler.client.lua`
 
 **Mechanism:**
+
 - Listens to `KioskShowConfirmation` RemoteEvent. A non-nil payload triggers `showUI()`; nil triggers `hideUI()`.
 - `populate(mode)` reads `KioskConfig.getSteps(mode).stepNamesDetailed` and fills `Objective1`–`Objective4` labels.
 - Three UI elements (`Panel`, `Controles`, `btnConfirm`) animate in with a staggered Quint slide-up effect (0.05 s between each).
@@ -592,10 +633,12 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 **Purpose:** Displays a detailed breakdown of simulation performance (rank, points, per-step times, precision, critical errors) after a simulation ends.
 
 **Scripts:**
+
 - `src/server/modules/ResultsSystem.lua` — computes and fires the payload.
 - `src/client/ResultsScreenHandler.client.lua` — receives and displays the payload.
 
 **Server side (`ResultsSystem`):**
+
 - `compute(session, simType, locationName, difficulty)` — builds a results payload table from session data:
   - Per-step points using `stepPoints()` (1000/800/600/400/200 scale).
   - Rank from total points ratio (S/A+/A/B+/B/C+/C/D).
@@ -606,6 +649,7 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 - Handles `ReturnToLobby:OnServerEvent` → teleports the player to `MainLobby`.
 
 **Client side (`ResultsScreenHandler`):**
+
 - Receives `ShowResults`. Validates payload is a table.
 - Populates: `LabelHeader`, `LabelRank` (with colour from rank), `RankContainer` image (green/yellow/red band), `LabelPoints`, `LabelTime`, `LabelPrecision`, `LabelErrors`, `LabelObjectives`.
 - Populates per-step rows (`Step1..4`) with name, time, and points.
@@ -632,6 +676,7 @@ Refugees/<locationName>/<simType>/Refuge1, Refuge2, ...
 **Script:** `src/server/modules/HUDService.lua`
 
 **Mechanism:**
+
 - `startTicker(player, session, services)` — validates preconditions (player, session fields, services fields) and spawns a `task.spawn` loop.
 - Every second, computes:
   - `timeLeft` — `SIMULATION_GLOBAL_TIMEOUT − elapsed`, floored to integer.

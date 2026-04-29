@@ -7,7 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DialogService = require(script.Parent.DialogService)
 local NavigationUtils = require(script.Parent.NavigationUtils)
 local ResultsSystem = require(script.Parent.ResultsSystem)
-local KioskConfig   = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
+local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 
 local atacantNPC = ReplicatedStorage:WaitForChild("Atacant NPC")
 local AtacantsSpawns = workspace:WaitForChild("AtacantsSpawns")
@@ -17,15 +17,21 @@ local RNG = Random.new()
 local ArmedGroupsSimulation = {}
 
 local function endArmedGroupsByDeath(player, locationName, spawnedNPCs, services, state)
-	if not player or not player.Parent then return end
+	if not player or not player.Parent then
+		return
+	end
 	local session = state.playerSimulationData[player.UserId]
-	if not session then return end
+	if not session then
+		return
+	end
 
 	DialogService.send(player, "Error", "SIMULACRO FINALIZADO — El participante fue neutralizado.")
 	task.wait(2)
 
 	for _, npc in ipairs(spawnedNPCs or {}) do
-		if npc and npc.Parent then npc:Destroy() end
+		if npc and npc.Parent then
+			npc:Destroy()
+		end
 	end
 
 	services.HUDService.stopTicker(player)
@@ -75,7 +81,14 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 	}
 
 	local session = state.playerSimulationData[player.UserId]
-	print(string.format("[SimController] Grupos armados iniciado: %s — %s — Dificultad %d", player.Name, locationName, difficulty))
+	print(
+		string.format(
+			"[SimController] Grupos armados iniciado: %s — %s — Dificultad %d",
+			player.Name,
+			locationName,
+			difficulty
+		)
+	)
 	services.HUDService.startTicker(player, session, services)
 
 	local function recordStep()
@@ -115,7 +128,11 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 		end
 	end)
 
-	DialogService.send(player, "Warning", "CODIGO ROJO — Se ha confirmado presencia de personas no autorizadas con comportamiento hostil.")
+	DialogService.send(
+		player,
+		"Warning",
+		"CODIGO ROJO — Se ha confirmado presencia de personas no autorizadas con comportamiento hostil."
+	)
 	task.wait(2)
 	DialogService.send(player, "Info", "Active el protocolo de confinamiento. Mantenga la calma absoluta.")
 	task.wait(2)
@@ -126,9 +143,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 		local sp = spawns[i]
 		if sp then
 			local clone = atacantNPC:Clone()
-			local cf = sp:IsA("BasePart") and sp.CFrame
-				or sp:IsA("Attachment") and sp.WorldCFrame
-				or sp:GetPivot()
+			local cf = sp:IsA("BasePart") and sp.CFrame or sp:IsA("Attachment") and sp.WorldCFrame or sp:GetPivot()
 			if clone:IsA("Model") then
 				clone:PivotTo(cf)
 			elseif clone:IsA("BasePart") then
@@ -189,7 +204,11 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 			end
 
 			NavigationUtils.highlightPart(wp3, true)
-			DialogService.send(player, "Info", "PASO 3: Las autoridades han llegado. Dirijase al punto de verificacion.")
+			DialogService.send(
+				player,
+				"Info",
+				"PASO 3: Las autoridades han llegado. Dirijase al punto de verificacion."
+			)
 			task.wait(1)
 			DialogService.send(player, "Info", "Mantengase con las manos visibles. Identifiquese si se lo solicitan.")
 
@@ -218,16 +237,28 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 				NavigationUtils.setupWaypointDetection(player, wp4, 4, function()
 					recordStep()
 					NavigationUtils.highlightPart(wp4, false)
-					DialogService.send(player, "Success", "Punto de reunion alcanzado. La amenaza ha sido neutralizada.")
+					DialogService.send(
+						player,
+						"Success",
+						"Punto de reunion alcanzado. La amenaza ha sido neutralizada."
+					)
 					task.wait(2)
 
 					for _, npc in pairs(spawnedNPCs) do
-						if npc and npc.Parent then npc:Destroy() end
+						if npc and npc.Parent then
+							npc:Destroy()
+						end
 					end
 					services.setPowerMode("NORMAL")
 					services.controllerHUDEvent:FireClient(player, "Hide")
-						ResultsSystem.show(player, session, "ArmedGroupsSimulation",
-							locationName, difficulty, services.mainLobbySpawn)
+					ResultsSystem.show(
+						player,
+						session,
+						"ArmedGroupsSimulation",
+						locationName,
+						difficulty,
+						services.mainLobbySpawn
+					)
 					services.HUDService.stopTicker(player)
 					state.playerSimulationData[player.UserId] = nil
 				end)

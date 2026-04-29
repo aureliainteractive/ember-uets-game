@@ -13,7 +13,9 @@ local NavigationUtils = {}
 
 -- Teleports a player to a target BasePart with a small vertical offset.
 function NavigationUtils.teleportPlayer(player, targetPart)
-	if not player or not player.Character then return false end
+	if not player or not player.Character then
+		return false
+	end
 	local hrp = player.Character:FindFirstChild("HumanoidRootPart")
 	if hrp and targetPart then
 		hrp.CFrame = targetPart.CFrame + Vector3.new(0, 3, 0)
@@ -36,7 +38,9 @@ function NavigationUtils.teleportToSpawn(player, simType, locationName)
 	end
 	local points = {}
 	for _, v in pairs(simFolder:GetChildren()) do
-		if v:IsA("BasePart") then table.insert(points, v) end
+		if v:IsA("BasePart") then
+			table.insert(points, v)
+		end
 	end
 	if #points == 0 then
 		warn(string.format("[SimController] Spawnpoints: sin puntos en '%s/%s'.", locationName, simType))
@@ -52,15 +56,23 @@ function NavigationUtils.teleportToClosestSpawn(player, simType, locationName, o
 		return NavigationUtils.teleportToSpawn(player, simType, locationName)
 	end
 	local locationFolder = spawnpointsFolder:FindFirstChild(locationName)
-	if not locationFolder then return false end
+	if not locationFolder then
+		return false
+	end
 	local simFolder = locationFolder:FindFirstChild(simType)
-	if not simFolder then return false end
+	if not simFolder then
+		return false
+	end
 
 	local points = {}
 	for _, v in pairs(simFolder:GetChildren()) do
-		if v:IsA("BasePart") then table.insert(points, v) end
+		if v:IsA("BasePart") then
+			table.insert(points, v)
+		end
 	end
-	if #points == 0 then return false end
+	if #points == 0 then
+		return false
+	end
 
 	local closest = points[1]
 	local closestDist = (closest.Position - originPart.Position).Magnitude
@@ -119,7 +131,9 @@ end
 
 -- Enables or disables highlight on a BasePart.
 function NavigationUtils.highlightPart(part, enable)
-	if not part or not part:IsA("BasePart") then return end
+	if not part or not part:IsA("BasePart") then
+		return
+	end
 	if enable then
 		if not part:FindFirstChild(highlightTemplate.Name) then
 			local clone = highlightTemplate:Clone()
@@ -129,7 +143,9 @@ function NavigationUtils.highlightPart(part, enable)
 	else
 		local existing = part:FindFirstChild(highlightTemplate.Name)
 		part.Transparency = 1
-		if existing then existing:Destroy() end
+		if existing then
+			existing:Destroy()
+		end
 	end
 end
 
@@ -142,14 +158,18 @@ end
 
 -- Connects one-shot waypoint touched detection for a player.
 function NavigationUtils.setupWaypointDetection(player, waypoint, waypointNumber, onTouch)
-	if not waypoint then return end
+	if not waypoint then
+		return
+	end
 	local connection
 	connection = waypoint.Touched:Connect(function(hit)
 		if hit.Parent == player.Character then
 			local humanoid = hit.Parent:FindFirstChild("Humanoid")
 			if humanoid then
 				connection:Disconnect()
-				if onTouch then onTouch(waypointNumber) end
+				if onTouch then
+					onTouch(waypointNumber)
+				end
 			end
 		end
 	end)
@@ -158,7 +178,9 @@ end
 
 -- Connects refuge touched detection and resolves once any refuge is reached.
 function NavigationUtils.setupRefugeDetection(player, refuges, onRefugeReached)
-	if not refuges or #refuges == 0 then return {} end
+	if not refuges or #refuges == 0 then
+		return {}
+	end
 	local connections = {}
 	local reached = false
 	for _, refuge in pairs(refuges) do
@@ -168,8 +190,12 @@ function NavigationUtils.setupRefugeDetection(player, refuges, onRefugeReached)
 				local humanoid = hit.Parent:FindFirstChild("Humanoid")
 				if humanoid then
 					reached = true
-					for _, c in pairs(connections) do c:Disconnect() end
-					if onRefugeReached then onRefugeReached(refuge) end
+					for _, c in pairs(connections) do
+						c:Disconnect()
+					end
+					if onRefugeReached then
+						onRefugeReached(refuge)
+					end
 				end
 			end
 		end)

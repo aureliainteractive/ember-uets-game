@@ -5,7 +5,8 @@
 -- The main logic is now in: ReplicatedStorage.Shared.Modules.NPCWaypointFollower
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local NPCWaypointFollower = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Modules"):WaitForChild("NPCWaypointFollower"))
+local NPCWaypointFollower =
+	require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Modules"):WaitForChild("NPCWaypointFollower"))
 
 local npc = script.Parent
 NPCWaypointFollower.start(npc)

@@ -7,7 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DialogService = require(script.Parent.DialogService)
 local NavigationUtils = require(script.Parent.NavigationUtils)
 local ResultsSystem = require(script.Parent.ResultsSystem)
-local KioskConfig   = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
+local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 
 local RNG = Random.new()
 
@@ -30,9 +30,7 @@ local function approx(a, b, eps)
 end
 
 local function approxVec3(v, target, eps)
-	return approx(v.X, target.X, eps)
-		and approx(v.Y, target.Y, eps)
-		and approx(v.Z, target.Z, eps)
+	return approx(v.X, target.X, eps) and approx(v.Y, target.Y, eps) and approx(v.Z, target.Z, eps)
 end
 
 local function getVolume(part)
@@ -48,29 +46,57 @@ local function sortByVolumeDesc(parts)
 end
 
 local function isValidPart(obj)
-	if not obj or not obj:IsA("BasePart") then return false end
-	if not obj.Parent then return false end
-	if obj.Transparency >= 1 then return false end
-	if obj.Name == "Baseplate" or obj.Name == "Terrain" then return false end
-	if obj.Locked then return false end
+	if not obj or not obj:IsA("BasePart") then
+		return false
+	end
+	if not obj.Parent then
+		return false
+	end
+	if obj.Transparency >= 1 then
+		return false
+	end
+	if obj.Name == "Baseplate" or obj.Name == "Terrain" then
+		return false
+	end
+	if obj.Locked then
+		return false
+	end
 	return true
 end
 
 local function isStructuralCandidate(part)
-	if not isValidPart(part) then return false end
-	if not part.Anchored then return false end
+	if not isValidPart(part) then
+		return false
+	end
+	if not part.Anchored then
+		return false
+	end
 	local volume = getVolume(part)
-	if volume < MIN_STRUCTURAL_VOLUME or volume > MAX_STRUCTURAL_VOLUME then return false end
-	if math.max(part.Size.X, part.Size.Y, part.Size.Z) > MAX_PART_DIMENSION then return false end
-	if part.Name:match("^Waypoint") or part.Name:match("^Refuge") then return false end
+	if volume < MIN_STRUCTURAL_VOLUME or volume > MAX_STRUCTURAL_VOLUME then
+		return false
+	end
+	if math.max(part.Size.X, part.Size.Y, part.Size.Z) > MAX_PART_DIMENSION then
+		return false
+	end
+	if part.Name:match("^Waypoint") or part.Name:match("^Refuge") then
+		return false
+	end
 	return true
 end
 
 local function canUnanchorPart(part)
-	if not isValidPart(part) then return false end
-	if not part.Anchored then return false end
-	if math.max(part.Size.X, part.Size.Y, part.Size.Z) > MAX_PART_DIMENSION then return false end
-	if part.AssemblyMass > MAX_UNANCHOR_ASSEMBLY_MASS then return false end
+	if not isValidPart(part) then
+		return false
+	end
+	if not part.Anchored then
+		return false
+	end
+	if math.max(part.Size.X, part.Size.Y, part.Size.Z) > MAX_PART_DIMENSION then
+		return false
+	end
+	if part.AssemblyMass > MAX_UNANCHOR_ASSEMBLY_MASS then
+		return false
+	end
 	return true
 end
 
@@ -89,10 +115,11 @@ function EarthquakeSimulation.collectEarthquakeCandidates(building)
 	local count = 0
 	for _, obj in ipairs(building:GetDescendants()) do
 		count += 1
-		if count % SCAN_YIELD_EVERY == 0 then task.wait() end
+		if count % SCAN_YIELD_EVERY == 0 then
+			task.wait()
+		end
 
-		if obj:IsA("Model")
-			and (obj.Name:match("^Ceiling Light%d+$") or obj.Name:match("^Roof with Light%d+$")) then
+		if obj:IsA("Model") and (obj.Name:match("^Ceiling Light%d+$") or obj.Name:match("^Roof with Light%d+$")) then
 			table.insert(lightModels, obj)
 		end
 
@@ -124,13 +151,20 @@ end
 
 -- Gets representative part from a model.
 function EarthquakeSimulation.getRepresentativePart(model)
-	if not model or not model:IsA("Model") then return nil end
-	if model.PrimaryPart then return model.PrimaryPart end
+	if not model or not model:IsA("Model") then
+		return nil
+	end
+	if model.PrimaryPart then
+		return model.PrimaryPart
+	end
 	local best, bestVol = nil, -1
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("BasePart") then
 			local v = getVolume(d)
-			if v > bestVol then bestVol = v; best = d end
+			if v > bestVol then
+				bestVol = v
+				best = d
+			end
 		end
 	end
 	return best
@@ -138,8 +172,12 @@ end
 
 -- Unanchors and impulses a part based on difficulty.
 function EarthquakeSimulation.unanchorAndKick(part, difficulty)
-	if not part or not part.Parent then return nil end
-	if not part:IsA("BasePart") or not canUnanchorPart(part) then return nil end
+	if not part or not part.Parent then
+		return nil
+	end
+	if not part:IsA("BasePart") or not canUnanchorPart(part) then
+		return nil
+	end
 
 	local state = { part = part, Anchored = true, CFrame = part.CFrame }
 	part.Anchored = false
@@ -147,11 +185,9 @@ function EarthquakeSimulation.unanchorAndKick(part, difficulty)
 	local strength = (difficulty == 1 and 40) or (difficulty == 2 and 75) or 120
 	pcall(function()
 		part:ApplyImpulse(
-			Vector3.new(
-				RNG:NextNumber(-1, 1),
-				RNG:NextNumber(0.5, 1),
-				RNG:NextNumber(-1, 1)
-			).Unit * strength * part.AssemblyMass
+			Vector3.new(RNG:NextNumber(-1, 1), RNG:NextNumber(0.5, 1), RNG:NextNumber(-1, 1)).Unit
+				* strength
+				* part.AssemblyMass
 		)
 	end)
 
@@ -175,35 +211,51 @@ function EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
 	local dropped = {}
 
 	local function rememberState(state)
-		if not state then return end
-		if dropped[state.part] then return end
-		if #originals >= maxTotalDrops then return end
+		if not state then
+			return
+		end
+		if dropped[state.part] then
+			return
+		end
+		if #originals >= maxTotalDrops then
+			return
+		end
 		dropped[state.part] = true
 		table.insert(originals, state)
 	end
 
 	local function desiredCount(list, minimum, ratio)
-		if #list == 0 then return 0 end
+		if #list == 0 then
+			return 0
+		end
 		local scaled = math.floor(#list * ratio)
 		return math.min(#list, math.max(minimum, scaled))
 	end
 
 	local function pickRandom(list, amount)
 		local picked = {}
-		if #list == 0 then return picked end
+		if #list == 0 then
+			return picked
+		end
 		amount = math.min(amount, #list)
 		local idx = {}
-		for i = 1, #list do idx[i] = i end
+		for i = 1, #list do
+			idx[i] = i
+		end
 		for i = #idx, 2, -1 do
 			local j = RNG:NextInteger(1, i)
 			idx[i], idx[j] = idx[j], idx[i]
 		end
-		for i = 1, amount do table.insert(picked, list[idx[i]]) end
+		for i = 1, amount do
+			table.insert(picked, list[idx[i]])
+		end
 		return picked
 	end
 
 	local function pickLargestRandom(list, amount, poolRatio)
-		if #list == 0 or amount <= 0 then return {} end
+		if #list == 0 or amount <= 0 then
+			return {}
+		end
 		local sorted = table.clone(list)
 		sortByVolumeDesc(sorted)
 		local poolSize = math.max(amount, math.floor(#sorted * (poolRatio or 0.35)))
@@ -216,9 +268,13 @@ function EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
 	end
 
 	local function kick(list, amount, preferLarge)
-		if #originals >= maxTotalDrops then return end
+		if #originals >= maxTotalDrops then
+			return
+		end
 		amount = math.max(0, math.min(amount, maxTotalDrops - #originals))
-		if amount <= 0 then return end
+		if amount <= 0 then
+			return
+		end
 		local picked = preferLarge and pickLargestRandom(list, amount, 0.4) or pickRandom(list, amount)
 		for _, obj in ipairs(picked) do
 			local state = EarthquakeSimulation.unanchorAndKick(obj, difficulty)
@@ -227,10 +283,16 @@ function EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
 	end
 
 	local function collapseAdjacentAround(part, amount, radius)
-		if amount <= 0 or radius <= 0 then return 0 end
-		if #originals >= maxTotalDrops then return 0 end
+		if amount <= 0 or radius <= 0 then
+			return 0
+		end
+		if #originals >= maxTotalDrops then
+			return 0
+		end
 		amount = math.max(0, math.min(amount, maxTotalDrops - #originals))
-		if amount <= 0 then return 0 end
+		if amount <= 0 then
+			return 0
+		end
 		local nearby = {}
 		for _, candidate in ipairs(c.structural) do
 			if not dropped[candidate] and candidate.Parent and candidate.Anchored then
@@ -301,11 +363,17 @@ function EarthquakeSimulation.triggerAftershocks(player, count, interval)
 			local duration = math.random(2, 4)
 			local scale = math.random() * 1.5 + 1.0
 
-			DialogService.send(player, "Warning", string.format("Replique sismica #%d detectada. Mantengase en posicion.", i))
+			DialogService.send(
+				player,
+				"Warning",
+				string.format("Replique sismica #%d detectada. Mantengase en posicion.", i)
+			)
 
 			pcall(function()
 				local ev = ReplicatedStorage:FindFirstChild("CameraShakeEvent")
-				if ev then ev:FireClient(player, duration, scale) end
+				if ev then
+					ev:FireClient(player, duration, scale)
+				end
 			end)
 		end
 		DialogService.send(player, "Info", "Las replicas han cesado. Permanezca en la zona segura.")
@@ -348,7 +416,14 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 	}
 
 	local session = state.playerSimulationData[player.UserId]
-	print(string.format("[SimController] Sismo iniciado: %s — %s — Dificultad %d", player.Name, locationName, difficulty))
+	print(
+		string.format(
+			"[SimController] Sismo iniciado: %s — %s — Dificultad %d",
+			player.Name,
+			locationName,
+			difficulty
+		)
+	)
 	services.HUDService.startTicker(player, session, services)
 
 	local function recordStep()
@@ -373,7 +448,9 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 
 	pcall(function()
 		local ev = ReplicatedStorage:FindFirstChild("CameraShakeEvent")
-		if ev then ev:FireClient(player, p.duration, p.shakeScale) end
+		if ev then
+			ev:FireClient(player, p.duration, p.shakeScale)
+		end
 	end)
 
 	services.controllerHUDEvent:FireClient(player, "Show")
@@ -449,8 +526,14 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 				services.setSimulationActive("Earthquake", locationName, false)
 				services.setPowerMode("NORMAL")
 				services.controllerHUDEvent:FireClient(player, "Hide")
-				ResultsSystem.show(player, session, "EarthquakeSimulation",
-					locationName, difficulty, services.mainLobbySpawn)
+				ResultsSystem.show(
+					player,
+					session,
+					"EarthquakeSimulation",
+					locationName,
+					difficulty,
+					services.mainLobbySpawn
+				)
 				services.HUDService.stopTicker(player)
 				state.playerSimulationData[player.UserId] = nil
 			end)

@@ -160,7 +160,9 @@ local function hideLoading(immediate)
 		local ui = UI_ITEMS[index]
 		local hiddenPos = HIDE_POSITIONS[ui]
 		task.delay((#UI_ITEMS - index) * 0.03, function()
-			if token ~= transitionToken then return end
+			if token ~= transitionToken then
+				return
+			end
 			local goals = { Position = hiddenPos }
 			if IMAGE_DEFAULT_TRANSPARENCY[ui] ~= nil then
 				goals.ImageTransparency = 1
@@ -176,7 +178,9 @@ local function hideLoading(immediate)
 	end
 
 	task.delay(TWEEN_OUT.Time + (#UI_ITEMS * 0.03) + 0.02, function()
-		if token ~= transitionToken then return end
+		if token ~= transitionToken then
+			return
+		end
 		setHiddenImmediate()
 		setVisibleDefaults()
 		loadingUI.Enabled = false
@@ -204,7 +208,9 @@ local function showLoading(payload)
 	for index, ui in ipairs(UI_ITEMS) do
 		local showPos = SHOW_POSITIONS[ui]
 		task.delay((index - 1) * 0.04, function()
-			if token ~= transitionToken or not isVisible then return end
+			if token ~= transitionToken or not isVisible then
+				return
+			end
 			if ui:IsA("GuiObject") then
 				ui.Visible = true
 			end
@@ -226,41 +232,63 @@ local function showLoading(payload)
 
 	task.spawn(function()
 		task.wait(0.6)
-		if token ~= transitionToken or not progressThreadActive then return end
+		if token ~= transitionToken or not progressThreadActive then
+			return
+		end
 		LoadingNowLabel.Text = "Cargando entorno 3D..."
 		setLoadingProgress(0.55)
 
 		task.wait(0.95)
-		if token ~= transitionToken or not progressThreadActive then return end
+		if token ~= transitionToken or not progressThreadActive then
+			return
+		end
 		LoadingNowLabel.Text = "Iniciando simulacion..."
 		setLoadingProgress(0.78)
 
 		if payload.mode == "FireSimulation" then
 			task.wait(0.75)
-			if token ~= transitionToken or not progressThreadActive then return end
+			if token ~= transitionToken or not progressThreadActive then
+				return
+			end
 			LoadingNowLabel.Text = "Preparando calefaccion..."
 			setLoadingProgress(0.86)
 		else
 			setLoadingProgress(0.86)
 		end
 
-		while token == transitionToken and progressThreadActive and isVisible and (tick() - startedAt) < MIN_LOADING_DURATION do
+		while
+			token == transitionToken
+			and progressThreadActive
+			and isVisible
+			and (tick() - startedAt) < MIN_LOADING_DURATION
+		do
 			tween(LoadingBarFill, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
 				Size = UDim2.new(0.92, 0, BAR_Y_SCALE, BAR_Y_OFFSET),
 			})
 			task.wait(0.95)
-			if token ~= transitionToken or not progressThreadActive or not isVisible or (tick() - startedAt) >= MIN_LOADING_DURATION then break end
+			if
+				token ~= transitionToken
+				or not progressThreadActive
+				or not isVisible
+				or (tick() - startedAt) >= MIN_LOADING_DURATION
+			then
+				break
+			end
 			tween(LoadingBarFill, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
 				Size = UDim2.new(0.88, 0, BAR_Y_SCALE, BAR_Y_OFFSET),
 			})
 			task.wait(0.95)
 		end
 
-		if token ~= transitionToken or not progressThreadActive or not isVisible then return end
+		if token ~= transitionToken or not progressThreadActive or not isVisible then
+			return
+		end
 		LoadingNowLabel.Text = "Trasladando participante..."
 		setLoadingProgress(END_SCALE_X, true)
 		task.wait(0.4)
-		if token ~= transitionToken or not progressThreadActive or not isVisible then return end
+		if token ~= transitionToken or not progressThreadActive or not isVisible then
+			return
+		end
 
 		pcall(function()
 			loadingReadyEvent:FireServer(payload.mode, payload.location, payload.diff)

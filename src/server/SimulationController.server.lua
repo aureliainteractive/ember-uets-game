@@ -61,36 +61,75 @@ local function setPowerMode(mode)
 end
 
 local function playIntercomSound(soundId)
-	if not audioPlayer then return end
-	audioPlayer:Stop(); audioPlayer.Asset = "rbxassetid://" .. soundId; audioPlayer.TimePosition = 0; audioPlayer:Play()
+	if not audioPlayer then
+		return
+	end
+	audioPlayer:Stop()
+	audioPlayer.Asset = "rbxassetid://" .. soundId
+	audioPlayer.TimePosition = 0
+	audioPlayer:Play()
 end
 
 local function stopIntercom()
-	if audioPlayer then audioPlayer:Stop(); audioPlayer.TimePosition = 0 end
+	if audioPlayer then
+		audioPlayer:Stop()
+		audioPlayer.TimePosition = 0
+	end
 end
 
 local function startExploreSimulation(player, locationName, _difficulty)
 	setSimulationActive("Explore", locationName, true)
 	NavigationUtils.teleportToSpawn(player, "FireSimulation", locationName)
 	controllerHUDEvent:FireClient(player, "Show")
-	if audioPlayer then audioPlayer:Stop(); audioPlayer.Asset = "rbxassetid://106924095504453"; audioPlayer.Looped = true; audioPlayer.Volume = 0.6; audioPlayer:Play() end
+	if audioPlayer then
+		audioPlayer:Stop()
+		audioPlayer.Asset = "rbxassetid://106924095504453"
+		audioPlayer.Looped = true
+		audioPlayer.Volume = 0.6
+		audioPlayer:Play()
+	end
 	print(string.format("[SimController] Exploración iniciada: %s — %s", player.Name, locationName))
 end
 
 finishedTaskBindable.Event:Connect(function(player, taskName, callback)
-	if not player or not player.Parent then if callback then callback(false, "Jugador invalido") end; return end
+	if not player or not player.Parent then
+		if callback then
+			callback(false, "Jugador invalido")
+		end
+		return
+	end
 	local tasks = (player:GetAttribute("TasksCompleted") or 0) + 1
 	player:SetAttribute("TasksCompleted", tasks)
-	if callback then callback(true, tasks) end
+	if callback then
+		callback(true, tasks)
+	end
 end)
 
 highlightPartBindable.Event:Connect(function(player, part, enable, callback)
-	if not player or not player.Parent then if callback then callback(false, "Jugador invalido") end; return end
-	if not part or not part:IsA("BasePart") or not part.Parent then if callback then callback(false, "Parte invalida") end; return end
-	if enable then NavigationUtils.highlightPart(part, true); if callback then callback(true) end; return end
+	if not player or not player.Parent then
+		if callback then
+			callback(false, "Jugador invalido")
+		end
+		return
+	end
+	if not part or not part:IsA("BasePart") or not part.Parent then
+		if callback then
+			callback(false, "Parte invalida")
+		end
+		return
+	end
+	if enable then
+		NavigationUtils.highlightPart(part, true)
+		if callback then
+			callback(true)
+		end
+		return
+	end
 	local existing = part:FindFirstChild(ReplicatedStorage:WaitForChild("HighlightTemplate").Name)
 	NavigationUtils.highlightPart(part, false)
-	if callback then callback(existing ~= nil) end
+	if callback then
+		callback(existing ~= nil)
+	end
 end)
 
 physicalActuatorBindable.Event:Connect(function(player, actuatorName, value, duration, callback)
@@ -99,10 +138,22 @@ end)
 
 Players.PlayerRemoving:Connect(function(player)
 	local simData = playerSimulationData[player.UserId]
-	if not simData then return end
-	if simData.seedPart and simData.seedPart.Parent then NavigationUtils.highlightPart(simData.seedPart, false) end
-	if simData.connections then for _, conn in pairs(simData.connections) do if conn and conn.Connected then conn:Disconnect() end end end
-	if simData.simulationEnded ~= nil then simData.simulationEnded = true end
+	if not simData then
+		return
+	end
+	if simData.seedPart and simData.seedPart.Parent then
+		NavigationUtils.highlightPart(simData.seedPart, false)
+	end
+	if simData.connections then
+		for _, conn in pairs(simData.connections) do
+			if conn and conn.Connected then
+				conn:Disconnect()
+			end
+		end
+	end
+	if simData.simulationEnded ~= nil then
+		simData.simulationEnded = true
+	end
 	playerSimulationData[player.UserId] = nil
 	pendingSimulationStarts[player.UserId] = nil
 	print(string.format("[SimController] Datos de simulacion limpiados: %s.", player.Name))
@@ -116,7 +167,9 @@ local function startSimulationNow(player, eventType, locationName, difficulty)
 		return
 	end
 
-	if eventType ~= "ExploreSimulation" then stopIntercom() end
+	if eventType ~= "ExploreSimulation" then
+		stopIntercom()
+	end
 
 	local services = {
 		setPowerMode = setPowerMode,
@@ -150,7 +203,9 @@ end
 
 simulationLoadingReadyEvent.OnServerEvent:Connect(function(player)
 	local pending = pendingSimulationStarts[player.UserId]
-	if not pending then return end
+	if not pending then
+		return
+	end
 	if pending.player ~= player or not player.Parent then
 		pendingSimulationStarts[player.UserId] = nil
 		return
@@ -162,11 +217,28 @@ simulationLoadingReadyEvent.OnServerEvent:Connect(function(player)
 end)
 
 simulationStartBindable.Event:Connect(function(player, eventType, locationName, difficultyStr)
-	if not player or not player.Parent then warn("[SimController] Solicitud de simulacro con jugador invalido."); return end
-	if type(eventType) ~= "string" or type(locationName) ~= "string" or locationName == "" then DialogService.send(player, "Error", "Parametros de simulacro invalidos."); return end
+	if not player or not player.Parent then
+		warn("[SimController] Solicitud de simulacro con jugador invalido.")
+		return
+	end
+	if type(eventType) ~= "string" or type(locationName) ~= "string" or locationName == "" then
+		DialogService.send(player, "Error", "Parametros de simulacro invalidos.")
+		return
+	end
 	local difficulty = DIFFICULTY_MAP[difficultyStr]
-	if not difficulty then DialogService.send(player, "Error", "Nivel de dificultad desconocido: " .. tostring(difficultyStr)); return end
-	print(string.format("[SimController] Solicitud: %s | %s | %s | %s", eventType, locationName, difficultyStr, player.Name))
+	if not difficulty then
+		DialogService.send(player, "Error", "Nivel de dificultad desconocido: " .. tostring(difficultyStr))
+		return
+	end
+	print(
+		string.format(
+			"[SimController] Solicitud: %s | %s | %s | %s",
+			eventType,
+			locationName,
+			difficultyStr,
+			player.Name
+		)
+	)
 
 	local request = {
 		player = player,
@@ -178,10 +250,17 @@ simulationStartBindable.Event:Connect(function(player, eventType, locationName, 
 
 	task.delay(LOADING_READY_TIMEOUT, function()
 		local pending = pendingSimulationStarts[player.UserId]
-		if pending ~= request then return end
+		if pending ~= request then
+			return
+		end
 		pendingSimulationStarts[player.UserId] = nil
 		if player and player.Parent then
-			warn(string.format("[SimController] Timeout esperando loading listo para %s. Iniciando de todos modos.", player.Name))
+			warn(
+				string.format(
+					"[SimController] Timeout esperando loading listo para %s. Iniciando de todos modos.",
+					player.Name
+				)
+			)
 			startSimulationNow(player, eventType, locationName, difficulty)
 		end
 	end)

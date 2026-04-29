@@ -55,8 +55,9 @@ end
 -- SHAKE NORMAL (NO VR)
 -- ================================
 local function shakeNormal(duration, intensity)
-
-	if shaking then return end
+	if shaking then
+		return
+	end
 	shaking = true
 
 	local startTime = tick()
@@ -85,10 +86,7 @@ local function shakeNormal(duration, intensity)
 
 		local time = elapsed * 12
 
-		local wave =
-			math.sin(time * 1.8) +
-			math.cos(time * 2.4) +
-			math.sin(time * 3.1) * 0.5
+		local wave = math.sin(time * 1.8) + math.cos(time * 2.4) + math.sin(time * 3.1) * 0.5
 
 		local noiseX = wave * (math.random() * 0.3 + 0.85)
 
@@ -109,8 +107,9 @@ end
 -- Se aplica un offset pequeño para evitar motion sickness.
 
 local function shakeVR(duration, intensity)
-
-	if shaking then return end
+	if shaking then
+		return
+	end
 	local humanoid = getHumanoid()
 	if not humanoid then
 		return
@@ -157,9 +156,12 @@ end
 -- EVENTO
 -- ================================
 CameraShakeEvent.OnClientEvent:Connect(function(duration, scale)
-
-	if typeof(duration) ~= "number" or typeof(scale) ~= "number" then return end
-	if duration <= 0 or scale <= 0 then return end
+	if typeof(duration) ~= "number" or typeof(scale) ~= "number" then
+		return
+	end
+	if duration <= 0 or scale <= 0 then
+		return
+	end
 
 	local intensity = scale * 0.35
 

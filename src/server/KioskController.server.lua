@@ -11,46 +11,45 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- KioskConfig: display names, descriptions, and step data.
-local KioskConfig = require(
-	ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig")
-)
+local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 
-local Menu       = workspace:WaitForChild("Menu")
-local gui        = Menu:WaitForChild("MenuScreen"):WaitForChild("SurfaceGui")
+local Menu = workspace:WaitForChild("Menu")
+local gui = Menu:WaitForChild("MenuScreen"):WaitForChild("SurfaceGui")
 local hitboxPart = Menu:WaitForChild("Hitbox")
 
-local startConfigBtn          = gui:WaitForChild("StartConfig")
-local ModeSelectorFrame       = gui:WaitForChild("ModeSelector")
-local DiffSelectorFrame       = gui:WaitForChild("DiffSelector")
-local LocationSelectorFrame   = gui:WaitForChild("LocationSelector")
-local blk                     = gui:WaitForChild("BLK")
-local awaitTouchLabel         = blk:WaitForChild("WaitingLabel")
-local infoLabel               = blk:WaitForChild("infoLabel")
-local confLabelsFrame         = gui:WaitForChild("ConfirmationLabels")
-local confInfoFrame           = gui:WaitForChild("ConfirmationInfo")
+local startConfigBtn = gui:WaitForChild("StartConfig")
+local ModeSelectorFrame = gui:WaitForChild("ModeSelector")
+local DiffSelectorFrame = gui:WaitForChild("DiffSelector")
+local LocationSelectorFrame = gui:WaitForChild("LocationSelector")
+local blk = gui:WaitForChild("BLK")
+local awaitTouchLabel = blk:WaitForChild("WaitingLabel")
+local infoLabel = blk:WaitForChild("infoLabel")
+local confLabelsFrame = gui:WaitForChild("ConfirmationLabels")
+local confInfoFrame = gui:WaitForChild("ConfirmationInfo")
 
-local SimulationStartBindable =
-	ReplicatedStorage:WaitForChild("SimulationStartBindable")
+local SimulationStartBindable = ReplicatedStorage:WaitForChild("SimulationStartBindable")
 
 -- ── ConfirmationUI RemoteEvents ──────────────────────────────────
 -- Created here (server-authoritative) and waited on by the client.
 local function getOrCreate(name)
 	local existing = ReplicatedStorage:FindFirstChild(name)
-	if existing then return existing end
+	if existing then
+		return existing
+	end
 	local e = Instance.new("RemoteEvent")
-	e.Name   = name
+	e.Name = name
 	e.Parent = ReplicatedStorage
 	return e
 end
 
 local kioskShowConfirmationEvent = getOrCreate("KioskShowConfirmation")
-local kioskConfirmEvent          = getOrCreate("KioskConfirm")
-local kioskCancelEvent           = getOrCreate("KioskCancel")
+local kioskConfirmEvent = getOrCreate("KioskConfirm")
+local kioskCancelEvent = getOrCreate("KioskCancel")
 
 local selectionEvent = Instance.new("BindableEvent")
 
-local mode, diff, loc  = nil, nil, nil
-local currentPlayer    = nil
+local mode, diff, loc = nil, nil, nil
+local currentPlayer = nil
 local configInProgress = false
 
 -- Suspends the calling coroutine until a TextButton in
@@ -67,7 +66,9 @@ local function waitForButtonClick(frame)
 		end
 	end
 	selectionEvent.Event:Wait()
-	for _, conn in pairs(connections) do conn:Disconnect() end
+	for _, conn in pairs(connections) do
+		conn:Disconnect()
+	end
 	return result
 end
 
@@ -79,64 +80,73 @@ local function resetKiosk()
 			kioskShowConfirmationEvent:FireClient(currentPlayer, nil)
 		end)
 	end
-	currentPlayer                 = nil
-	configInProgress              = false
-	mode, diff, loc               = nil, nil, nil
-	startConfigBtn.Visible        = false
-	awaitTouchLabel.Visible       = true
-	ModeSelectorFrame.Visible     = false
+	currentPlayer = nil
+	configInProgress = false
+	mode, diff, loc = nil, nil, nil
+	startConfigBtn.Visible = false
+	awaitTouchLabel.Visible = true
+	ModeSelectorFrame.Visible = false
 	LocationSelectorFrame.Visible = false
-	DiffSelectorFrame.Visible     = false
-	confInfoFrame.Visible         = false
-	confLabelsFrame.Visible       = false
-	infoLabel.Visible             = false
-	blk.Visible                   = false
+	DiffSelectorFrame.Visible = false
+	confInfoFrame.Visible = false
+	confLabelsFrame.Visible = false
+	infoLabel.Visible = false
+	blk.Visible = false
 	-- Unblock any coroutine waiting on a selection or confirmation step.
 	selectionEvent:Fire()
 end
 
 -- Runs the full mode → location → difficulty → confirmation flow.
 local function startConfig()
-	configInProgress   = true
+	configInProgress = true
 	startConfigBtn.Visible = false
-	blk.Visible        = true
-	infoLabel.Visible  = true
+	blk.Visible = true
+	infoLabel.Visible = true
 
 	-- Step 1: Mode
 	ModeSelectorFrame.Visible = true
 	infoLabel.Text = "Selecciona el Simulacro que deseas jugar"
 	mode = waitForButtonClick(ModeSelectorFrame)
 	ModeSelectorFrame.Visible = false
-	if not mode or not currentPlayer then configInProgress = false; return end
+	if not mode or not currentPlayer then
+		configInProgress = false
+		return
+	end
 
 	-- Step 2: Location
 	LocationSelectorFrame.Visible = true
 	infoLabel.Text = "Selecciona la Ubicación donde deseas empezar"
 	loc = waitForButtonClick(LocationSelectorFrame)
 	LocationSelectorFrame.Visible = false
-	if not loc or not currentPlayer then configInProgress = false; return end
+	if not loc or not currentPlayer then
+		configInProgress = false
+		return
+	end
 
 	-- Step 3: Difficulty
 	DiffSelectorFrame.Visible = true
 	infoLabel.Text = "Selecciona la dificultad en la que deseas jugar"
 	diff = waitForButtonClick(DiffSelectorFrame)
 	DiffSelectorFrame.Visible = false
-	if not diff or not currentPlayer then configInProgress = false; return end
+	if not diff or not currentPlayer then
+		configInProgress = false
+		return
+	end
 
 	-- Step 4: Confirmation — show summary on the kiosk surface using
 	-- display-friendly names from KioskConfig, then show the ScreenGui
 	-- ConfirmationUI on the player's screen and await their decision.
-	confInfoFrame.modeLabel.Text     = KioskConfig.getModeDisplay(mode)
-	confInfoFrame.diffLabel.Text     = KioskConfig.getDifficultyDisplay(diff)
+	confInfoFrame.modeLabel.Text = KioskConfig.getModeDisplay(mode)
+	confInfoFrame.diffLabel.Text = KioskConfig.getDifficultyDisplay(diff)
 	confInfoFrame.locationLabel.Text = loc
-	confInfoFrame.Visible            = true
-	confLabelsFrame.Visible          = true
+	confInfoFrame.Visible = true
+	confLabelsFrame.Visible = true
 	infoLabel.Text = "Confirma la selección en tu pantalla"
 
 	kioskShowConfirmationEvent:FireClient(currentPlayer, {
-		mode     = mode,
+		mode = mode,
 		location = loc,
-		diff     = diff,
+		diff = diff,
 	})
 
 	-- Wait for the player to confirm or cancel via the ConfirmationUI.
@@ -159,19 +169,19 @@ local function startConfig()
 	confirmConn:Disconnect()
 	cancelConn:Disconnect()
 
-	confInfoFrame.Visible   = false
+	confInfoFrame.Visible = false
 	confLabelsFrame.Visible = false
 
 	if not confirmed or not currentPlayer then
 		-- Player cancelled or the session was reset externally.
 		configInProgress = false
-		mode, diff, loc  = nil, nil, nil
+		mode, diff, loc = nil, nil, nil
 		if currentPlayer then
 			-- Player is still in range — let them retry.
 			infoLabel.Text = "Selección cancelada. Intenta de nuevo."
 			task.wait(2)
 			if currentPlayer then
-				infoLabel.Visible      = false
+				infoLabel.Visible = false
 				startConfigBtn.Visible = true
 			end
 		end
@@ -186,12 +196,12 @@ local function startConfig()
 	print("Simulación iniciada para " .. playerSnapshot.Name)
 	print("Modo: " .. mode .. ", Ubicación: " .. loc .. ", Dificultad: " .. diff)
 
-	mode, diff, loc  = nil, nil, nil
+	mode, diff, loc = nil, nil, nil
 	configInProgress = false
 
 	task.wait(3)
 	infoLabel.Visible = false
-	blk.Visible       = false
+	blk.Visible = false
 	if currentPlayer then
 		startConfigBtn.Visible = true
 	end
@@ -202,11 +212,13 @@ startConfigBtn.MouseButton1Click:Connect(startConfig)
 -- Shows the Start button when a player steps onto the hitbox.
 hitboxPart.Touched:Connect(function(hit)
 	local humanoid = hit.Parent:FindFirstChild("Humanoid")
-	if not humanoid or configInProgress then return end
+	if not humanoid or configInProgress then
+		return
+	end
 	local player = game.Players:GetPlayerFromCharacter(hit.Parent)
 	if player and not currentPlayer then
 		currentPlayer = player
-		startConfigBtn.Visible  = true
+		startConfigBtn.Visible = true
 		awaitTouchLabel.Visible = false
 		print(player.Name .. " entró a la zona")
 	end
@@ -215,13 +227,19 @@ end)
 -- Resets kiosk when the player leaves the hitbox.
 hitboxPart.TouchEnded:Connect(function(hit)
 	local humanoid = hit.Parent:FindFirstChild("Humanoid")
-	if not humanoid then return end
+	if not humanoid then
+		return
+	end
 	local player = game.Players:GetPlayerFromCharacter(hit.Parent)
-	if player ~= currentPlayer then return end
+	if player ~= currentPlayer then
+		return
+	end
 
 	task.wait(0.1)
 	for _, part in pairs(hitboxPart:GetTouchingParts()) do
-		if part.Parent == player.Character then return end
+		if part.Parent == player.Character then
+			return
+		end
 	end
 
 	print(player.Name .. " salió de la zona (config cancelada)")
