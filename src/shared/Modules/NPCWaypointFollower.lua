@@ -458,7 +458,7 @@ function NPCWaypointFollower.start(npcModel)
 
 	-- ─── Movement ─────────────────────────────────────────────────────────────
 
-	local function moveTo(targetPos, offset, segmentStart, segmentEnd, floorName)
+	local function moveTo(targetPos, offset, segmentStart, segmentEnd, floorName, debugLabel)
 		local effectiveOffset = offset or Vector3.zero
 		local goal    = targetPos + effectiveOffset
 		local reached = false
@@ -513,6 +513,12 @@ function NPCWaypointFollower.start(npcModel)
 
 		conn:Disconnect()
 		humanoid:MoveTo(goal)
+		if debugLabel then
+			Logger.debug("NPC", string.format(
+				"%s: MoveTo timeout (%s) goal=(%.1f, %.1f, %.1f)",
+				npcModel.Name, debugLabel, goal.X, goal.Y, goal.Z
+			))
+		end
 		return false
 	end
 
@@ -539,7 +545,7 @@ function NPCWaypointFollower.start(npcModel)
 					"%s: pathfinding failed (%s) status=%s; falling back to direct move",
 					npcModel.Name, tostring(err), tostring(path.Status)
 				))
-				return moveTo(targetPos, offset, rootPart.Position, goal, floorName)
+				return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-fallback")
 			end
 
 			local waypoints = path:GetWaypoints()
@@ -548,12 +554,12 @@ function NPCWaypointFollower.start(npcModel)
 					"%s: path computed but returned 0 waypoints; falling back to direct move",
 					npcModel.Name
 				))
-				return moveTo(targetPos, offset, rootPart.Position, goal, floorName)
+				return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-empty")
 			end
 
 			Logger.debug("NPC", string.format(
-				"%s: path ok with %d waypoints",
-				npcModel.Name, #waypoints
+				"%s: path ok with %d waypoints (status=%s)",
+				npcModel.Name, #waypoints, tostring(path.Status)
 			))
 
 			local nextWaypointIndex = 2
@@ -578,7 +584,7 @@ function NPCWaypointFollower.start(npcModel)
 				end
 				local isLast = (nextWaypointIndex == #waypoints)
 				local wpOffset = isLast and offset or nil
-				local okMove = moveTo(wp.Position, wpOffset, prevPos, wp.Position, floorName)
+				local okMove = moveTo(wp.Position, wpOffset, prevPos, wp.Position, floorName, "path-segment")
 				if not okMove then
 					Logger.debug("NPC", string.format(
 						"%s: moveTo waypoint %d failed; pos=(%.1f, %.1f, %.1f)",
@@ -595,7 +601,7 @@ function NPCWaypointFollower.start(npcModel)
 			end
 		end
 
-		return moveTo(targetPos, offset, rootPart.Position, goal, floorName)
+		return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-timeout")
 	end
 
 	-- ─── Pathfinding helpers ──────────────────────────────────────────────────
