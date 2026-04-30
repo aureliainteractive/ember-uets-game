@@ -100,7 +100,7 @@ local function rebuildDoorCache()
 			proxy.Name = "DoorPathfindingProxy"
 			proxy.Anchored = true
 			proxy.CanCollide = false
-			proxy.CanQuery = false
+			proxy.CanQuery = true
 			proxy.CanTouch = false
 			proxy.Transparency = 1
 			proxy.Parent = doorModel
@@ -116,7 +116,13 @@ local function rebuildDoorCache()
 			proxy.CFrame = cf
 		end
 		if size then
-			proxy.Size = size + Vector3.new(0.5, 0.5, 0.5)
+			local minSize = Vector3.new(2, 3, 2)
+			local padded = size + Vector3.new(2, 2, 2)
+			proxy.Size = Vector3.new(
+				math.max(minSize.X, padded.X),
+				math.max(minSize.Y, padded.Y),
+				math.max(minSize.Z, padded.Z)
+			)
 		end
 	end
 
