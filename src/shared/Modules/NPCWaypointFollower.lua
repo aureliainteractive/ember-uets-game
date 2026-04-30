@@ -17,6 +17,7 @@
 
 local NPCWaypointFollower = {}
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PathfindingService = game:GetService("PathfindingService")
 local Logger    = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 local NodeGraph = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Modules"):WaitForChild("NodeGraph"))
 
@@ -41,6 +42,8 @@ local AUTO_OFFSET_RADIUS          = 2.25
 local STUCK_TIME_BEFORE_NUDGE     = 1.0
 local STUCK_MOVEMENT_EPSILON      = 0.05
 local STUCK_NUDGE_RADIUS          = 2.0
+
+local PATHFINDING_TIMEOUT         = 6
 
 -- ─── Global door cache ────────────────────────────────────────────────────────
 
@@ -471,6 +474,45 @@ function NPCWaypointFollower.start(npcModel)
 		return false
 	end
 
+	local function moveUsingPathfinding(targetPos, offset, floorName)
+		local effectiveOffset = offset or Vector3.zero
+		local goal = targetPos + effectiveOffset
+		local path = PathfindingService:CreatePath()
+		local ok, err = pcall(function()
+			path:ComputeAsync(rootPart.Position, goal)
+		end)
+		if not ok or path.Status ~= Enum.PathStatus.Success then
+			Logger.debug("NPC", string.format(
+				"%s: pathfinding failed (%s); falling back to direct move",
+				npcModel.Name, tostring(err or path.Status)
+			))
+			return moveTo(targetPos, offset, rootPart.Position, goal, floorName)
+		end
+
+		local waypoints = path:GetWaypoints()
+		if #waypoints == 0 then
+			return moveTo(targetPos, offset, rootPart.Position, goal, floorName)
+		end
+
+		local prevPos = rootPart.Position
+		local startTick = tick()
+		for i, wp in ipairs(waypoints) do
+			if humanoid.Health <= 0 or not npcModel.Parent then return false end
+			if wp.Action == Enum.PathWaypointAction.Jump then
+				humanoid.Jump = true
+			end
+			local isLast = (i == #waypoints)
+			local wpOffset = isLast and offset or nil
+			local okMove = moveTo(wp.Position, wpOffset, prevPos, wp.Position, floorName)
+			prevPos = wp.Position
+			if not okMove and (tick() - startTick) > PATHFINDING_TIMEOUT then
+				break
+			end
+		end
+
+		return true
+	end
+
 	-- ─── Pathfinding helpers ──────────────────────────────────────────────────
 
 	-- Returns (path, targetNode) where path is an ordered list of node BaseParts.
@@ -563,6 +605,11 @@ function NPCWaypointFollower.start(npcModel)
 			currentNode = NodeGraph.getNearestNode(rootPart.Position, buildingName)
 		end
 
+		-- First leg: pathfind to the initial node so NPCs don't clip walls at spawn
+		if currentNode and (rootPart.Position - currentNode.Position).Magnitude > ARRIVE_RADIUS then
+			moveUsingPathfinding(currentNode.Position, offset, preferFloor)
+		end
+
 		-- ── Waypoint loop ───────────────────────────────────────────────────────
 
 		for _, entry in ipairs(waypoints) do
@@ -618,7 +665,7 @@ function NPCWaypointFollower.start(npcModel)
 			else
 				-- Transit (default): do a final precise step to the waypoint position.
 				-- The node path brings NPCs close; this step lands them exactly on target.
-				moveTo(wp.Position, offset, rootPart.Position, wp.Position, arrivalFloor)
+				moveUsingPathfinding(wp.Position, offset, arrivalFloor)
 			end
 
 			-- Advance currentNode for the next iteration
