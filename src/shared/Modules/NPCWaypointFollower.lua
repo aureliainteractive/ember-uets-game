@@ -520,6 +520,12 @@ function NPCWaypointFollower.start(npcModel)
 		local effectiveOffset = offset or Vector3.zero
 		local goal = targetPos + effectiveOffset
 		local deadline = tick() + PATHFINDING_TIMEOUT
+		local startPos = rootPart.Position
+
+		Logger.debug("NPC", string.format(
+			"%s: pathfinding from (%.1f, %.1f, %.1f) to (%.1f, %.1f, %.1f)",
+			npcModel.Name, startPos.X, startPos.Y, startPos.Z, goal.X, goal.Y, goal.Z
+		))
 
 		while tick() < deadline do
 			if humanoid.Health <= 0 or not npcModel.Parent then return false end
@@ -530,16 +536,25 @@ function NPCWaypointFollower.start(npcModel)
 			end)
 			if not ok or path.Status ~= Enum.PathStatus.Success then
 				Logger.debug("NPC", string.format(
-					"%s: pathfinding failed (%s); falling back to direct move",
-					npcModel.Name, tostring(err or path.Status)
+					"%s: pathfinding failed (%s) status=%s; falling back to direct move",
+					npcModel.Name, tostring(err), tostring(path.Status)
 				))
 				return moveTo(targetPos, offset, rootPart.Position, goal, floorName)
 			end
 
 			local waypoints = path:GetWaypoints()
 			if #waypoints == 0 then
+				Logger.debug("NPC", string.format(
+					"%s: path computed but returned 0 waypoints; falling back to direct move",
+					npcModel.Name
+				))
 				return moveTo(targetPos, offset, rootPart.Position, goal, floorName)
 			end
+
+			Logger.debug("NPC", string.format(
+				"%s: path ok with %d waypoints",
+				npcModel.Name, #waypoints
+			))
 
 			local nextWaypointIndex = 2
 			local blockedAhead = false
@@ -563,7 +578,13 @@ function NPCWaypointFollower.start(npcModel)
 				end
 				local isLast = (nextWaypointIndex == #waypoints)
 				local wpOffset = isLast and offset or nil
-				moveTo(wp.Position, wpOffset, prevPos, wp.Position, floorName)
+				local okMove = moveTo(wp.Position, wpOffset, prevPos, wp.Position, floorName)
+				if not okMove then
+					Logger.debug("NPC", string.format(
+						"%s: moveTo waypoint %d failed; pos=(%.1f, %.1f, %.1f)",
+						npcModel.Name, nextWaypointIndex, wp.Position.X, wp.Position.Y, wp.Position.Z
+					))
+				end
 				prevPos = wp.Position
 				nextWaypointIndex += 1
 			end
