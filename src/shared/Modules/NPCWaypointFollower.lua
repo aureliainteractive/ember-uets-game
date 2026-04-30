@@ -45,6 +45,7 @@ local STUCK_NUDGE_RADIUS          = 2.0
 
 local PATHFINDING_TIMEOUT         = 6
 local MAX_CONCURRENT_PATHS        = 4
+local PATHFINDING_SLOT_TIMEOUT    = 0.6
 
 -- ─── Global door cache ────────────────────────────────────────────────────────
 
@@ -546,11 +547,19 @@ function NPCWaypointFollower.start(npcModel)
 		while tick() < deadline do
 			if humanoid.Health <= 0 or not npcModel.Parent then return false end
 
+			local waitStart = tick()
+			local loggedWait = false
 			while activePathComputes >= MAX_CONCURRENT_PATHS do
-				Logger.debug("NPC", string.format(
-					"%s: waiting for pathfinding slot (%d/%d)",
-					npcModel.Name, activePathComputes, MAX_CONCURRENT_PATHS
-				))
+				if not loggedWait then
+					Logger.debug("NPC", string.format(
+						"%s: waiting for pathfinding slot (%d/%d)",
+						npcModel.Name, activePathComputes, MAX_CONCURRENT_PATHS
+					))
+					loggedWait = true
+				end
+				if tick() - waitStart > PATHFINDING_SLOT_TIMEOUT then
+					return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-slot-timeout")
+				end
 				task.wait(0.05)
 			end
 
