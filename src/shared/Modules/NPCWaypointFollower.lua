@@ -108,6 +108,7 @@ local function rebuildDoorCache()
 			proxy.Parent = doorModel
 
 			local modifier = Instance.new("PathfindingModifier")
+			modifier.Label = "DoorPass"
 			modifier.PassThrough = true
 			modifier.Parent = proxy
 		end
@@ -547,7 +548,18 @@ function NPCWaypointFollower.start(npcModel)
 			end
 
 			activePathComputes += 1
-			local path = PathfindingService:CreatePath()
+			local agentRadius = math.max(2, (rootPart.Size.X + rootPart.Size.Z) * 0.25)
+			local agentHeight = math.max(5, humanoid.HipHeight * 2 + 2)
+			local path = PathfindingService:CreatePath({
+				AgentRadius = agentRadius,
+				AgentHeight = agentHeight,
+				AgentCanJump = true,
+				AgentCanClimb = true,
+				WaypointSpacing = 4,
+				Costs = {
+					DoorPass = 1,
+				},
+			})
 			local ok, err = pcall(function()
 				path:ComputeAsync(rootPart.Position, goal)
 			end)
