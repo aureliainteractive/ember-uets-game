@@ -564,7 +564,7 @@ function NPCWaypointFollower.start(npcModel)
 	-- ─── Waypoint behaviour handlers ─────────────────────────────────────────
 
 	local function handleHold(wp, offset, floorName)
-		moveTo(wp.Position, offset, nil, nil, floorName)
+		moveUsingPathfinding(wp.Position, offset, floorName)
 		if humanoid.Health <= 0 then return end
 		local holdDuration = wp:GetAttribute("HoldDuration") or 3
 		local held = 0
@@ -577,7 +577,7 @@ function NPCWaypointFollower.start(npcModel)
 	end
 
 	local function handleFinish(wp, offset, floorName)
-		moveTo(wp.Position, offset, nil, nil, floorName)
+		moveUsingPathfinding(wp.Position, offset, floorName)
 		task.spawn(function()
 			local finalPos = wp.Position + (offset or Vector3.zero)
 			while npcModel.Parent and humanoid.Health > 0 do
@@ -627,7 +627,7 @@ function NPCWaypointFollower.start(npcModel)
 			currentNode = NodeGraph.getNearestNode(rootPart.Position, buildingName)
 		end
 
-		-- First leg: pathfind to the initial node so NPCs don't clip walls at spawn
+		-- First leg: pathfind from spawn to the initial node
 		if currentNode and (rootPart.Position - currentNode.Position).Magnitude > ARRIVE_RADIUS then
 			moveUsingPathfinding(currentNode.Position, offset, preferFloor)
 		end
