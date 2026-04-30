@@ -373,11 +373,11 @@ function NPCWaypointFollower.start(npcModel)
 		end
 
 		local list = {}
-		for _, child in ipairs(eventFolder:GetChildren()) do
-			if child:IsA("BasePart") then
-				local n = parseWaypointIndex(child.Name)
+		for _, descendant in ipairs(eventFolder:GetDescendants()) do
+			if descendant:IsA("BasePart") then
+				local n = parseWaypointIndex(descendant.Name)
 				if n then
-					table.insert(list, { index = n, part = child })
+					table.insert(list, { index = n, part = descendant })
 				end
 			end
 		end

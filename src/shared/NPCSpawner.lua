@@ -358,23 +358,31 @@ end
 local function getSpawnPoints(buildingName)
 	local root = workspace:FindFirstChild(SPAWNS_FOLDER)
 	if not root then
-		return { CFrame = CFrame.new(0, 5, 0) }
+		return { { part = nil, floorName = nil, cframe = CFrame.new(0, 5, 0) } }
 	end
 
 	local folder = root:FindFirstChild(buildingName)
 	if not folder then
-		return { CFrame = CFrame.new(0, 5, 0) }
+		return { { part = nil, floorName = nil, cframe = CFrame.new(0, 5, 0) } }
 	end
 
 	local pts = {}
-	for _, v in ipairs(folder:GetDescendants()) do
-		if v:IsA("BasePart") then
-			table.insert(pts, v)
+	for _, floorFolder in ipairs(folder:GetChildren()) do
+		if floorFolder:IsA("Folder") or floorFolder:IsA("Model") then
+			for _, descendant in ipairs(floorFolder:GetDescendants()) do
+				if descendant:IsA("BasePart") then
+					table.insert(pts, {
+						part = descendant,
+						floorName = floorFolder.Name,
+						cframe = descendant.CFrame,
+					})
+				end
+			end
 		end
 	end
 
 	if #pts == 0 then
-		table.insert(pts, { CFrame = CFrame.new(0, 5, 0) })
+		table.insert(pts, { part = nil, floorName = nil, cframe = CFrame.new(0, 5, 0) })
 	end
 
 	return pts
@@ -435,11 +443,14 @@ function NPCSpawner.spawn(config)
 				end
 
 				local sp = spawns[rng:NextInteger(1, #spawns)]
-				local cf = sp:IsA("BasePart") and sp.CFrame or sp.CFrame
+				local cf = sp.cframe or (sp.part and sp.part.CFrame) or CFrame.new(0, 5, 0)
 
 				npc:PivotTo(cf + randomOffset(radius))
 
 				npc:SetAttribute("BuildingName", building)
+				if sp.floorName then
+					npc:SetAttribute("FloorName", sp.floorName)
+				end
 				npc:SetAttribute("EventType", event)
 				npc:SetAttribute("StartDelay", rng:NextNumber(0, delayMax))
 				npc:SetAttribute("PathingStarted", false)

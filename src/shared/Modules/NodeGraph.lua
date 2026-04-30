@@ -15,6 +15,18 @@ local FLOOR_INTERCONNECT_BONUS = 1.5 -- allow slightly larger radius to connect 
 local buildingCache = {}
 local staleBuildings = {}
 
+local function getFloorFolderName(node, buildingFolder)
+    local current = node and node.Parent
+    while current and current ~= buildingFolder do
+        if current.Parent == buildingFolder then
+            return current.Name
+        end
+        current = current.Parent
+    end
+
+    return nil
+end
+
 local function findNodesRoot()
     return workspace:FindFirstChild(NPC_NODES_ROOT_NAME)
 end
@@ -66,9 +78,10 @@ local function buildGraphForBuilding(buildingName)
     local nodes = {}
     for _, floor in ipairs(buildingFolder:GetChildren()) do
         if floor:IsA("Folder") or floor:IsA("Model") then
-            for _, child in ipairs(floor:GetChildren()) do
-                if child:IsA("BasePart") then
-                    table.insert(nodes, { inst = child, floor = floor.Name, pos = child.Position })
+            for _, descendant in ipairs(floor:GetDescendants()) do
+                if descendant:IsA("BasePart") then
+                    local floorName = getFloorFolderName(descendant, buildingFolder) or floor.Name
+                    table.insert(nodes, { inst = descendant, floor = floorName, pos = descendant.Position })
                 end
             end
         end
