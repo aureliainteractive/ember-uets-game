@@ -482,9 +482,17 @@ function NPCSpawner.spawn(config)
 				local h = npc:FindFirstChildOfClass("Humanoid")
 				if h then
 					h.WalkSpeed = speed
+					h.AutoRotate = true
+					h.PlatformStand = false
+					h.Sit = false
 				end
 
 				npc.Parent = group
+				local rootPart = npc:FindFirstChild("HumanoidRootPart")
+				if rootPart and rootPart:IsA("BasePart") then
+					rootPart.Anchored = false
+					rootPart:SetNetworkOwner(nil)
+				end
 				NPCFollowerController.activate(npc)
 			end
 

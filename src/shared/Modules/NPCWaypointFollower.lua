@@ -212,6 +212,13 @@ function NPCWaypointFollower.start(npcModel)
 		return
 	end
 
+	-- Ensure the humanoid can actually move
+	if rootPart.Anchored then rootPart.Anchored = false end
+	if humanoid.PlatformStand then humanoid.PlatformStand = false end
+	if humanoid.Sit then humanoid.Sit = false end
+	if humanoid.AutoRotate == false then humanoid.AutoRotate = true end
+	if humanoid.WalkSpeed <= 0 then humanoid.WalkSpeed = 10 end
+
 	local doorDebounces = {}
 
 	if #doorCache == 0 then rebuildDoorCache() end
