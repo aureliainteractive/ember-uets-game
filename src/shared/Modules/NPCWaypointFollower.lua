@@ -27,6 +27,7 @@ local START_EVENT_NAME = "StartPathing"
 local DOOR_DETECTION_RADIUS = 16 -- studs: scan nearby doors with extra margin
 local DOOR_TRIGGER_DISTANCE = 12 -- studs: trigger opening before NPC gets stuck at frame
 local DOOR_DEBOUNCE_TIME = 1.5 -- seconds: prevent door spam from same NPC
+local DOOR_SEGMENT_HEIGHT_TOLERANCE = 8 -- studs: ignore doors that are not on the same vertical band as the movement segment
 
 -- Crowd/anti-clumping constants
 local AUTO_OFFSET_RADIUS = 2.25 -- studs: fallback per-NPC lateral spread when no PositionOffset is provided
@@ -332,6 +333,84 @@ function NPCWaypointFollower.start(npcModel)
 		end
 	end
 
+	local function segmentDistanceToPoint(segmentStart, segmentEnd, point)
+		local segment = segmentEnd - segmentStart
+		local segmentLengthSquared = segment:Dot(segment)
+		if segmentLengthSquared <= 0.0001 then
+			return (point - segmentStart).Magnitude
+		end
+
+		local t = math.max(0, math.min(1, (point - segmentStart):Dot(segment) / segmentLengthSquared))
+		local closest = segmentStart + segment * t
+		return (point - closest).Magnitude, closest
+	end
+
+	local function tryOpenDoorsOnSegment(segmentStart, segmentEnd)
+		if humanoid.Health <= 0 then
+			return
+		end
+
+		if tick() - doorCacheLastUpdate > DOOR_CACHE_UPDATE_INTERVAL then
+			rebuildDoorCache()
+		end
+
+		local bestDoor = nil
+		local bestDoorEvent = nil
+		local bestDoorDistance = math.huge
+		local _, closestPoint = segmentDistanceToPoint(segmentStart, segmentEnd, segmentStart)
+		local segmentMidY = (segmentStart.Y + segmentEnd.Y) * 0.5
+
+		for _, doorModel in ipairs(doorCache) do
+			if not doorModel or not doorModel.Parent then
+				continue
+			end
+
+			local ok, pivot = pcall(function()
+				return doorModel:GetPivot()
+			end)
+			local doorPos = ok and pivot and pivot.Position or nil
+			if not doorPos then
+				continue
+			end
+
+			-- Only consider doors that are in the same vertical band as the path segment.
+			if math.abs(doorPos.Y - segmentMidY) > DOOR_SEGMENT_HEIGHT_TOLERANCE then
+				continue
+			end
+
+			local distanceToSegment = segmentDistanceToPoint(segmentStart, segmentEnd, doorPos)
+			if distanceToSegment > DOOR_DETECTION_RADIUS then
+				continue
+			end
+
+			if not doorDebounces[doorModel] then
+				doorDebounces[doorModel] = {}
+			end
+
+			local lastTriggered = doorDebounces[doorModel].lastTriggeredTime or 0
+			if tick() - lastTriggered < DOOR_DEBOUNCE_TIME then
+				continue
+			end
+
+			local openDoorEvent = doorModel:FindFirstChild("OpenDoorEvent", true)
+			if not openDoorEvent or not openDoorEvent:IsA("BindableEvent") then
+				continue
+			end
+
+			if distanceToSegment < bestDoorDistance then
+				bestDoor = doorModel
+				bestDoorEvent = openDoorEvent
+				bestDoorDistance = distanceToSegment
+			end
+		end
+
+		if bestDoor and bestDoorEvent and bestDoorDistance <= DOOR_TRIGGER_DISTANCE then
+			doorDebounces[bestDoor].lastTriggeredTime = tick()
+			Logger.debug("NPC", string.format("%s requested door open on segment: %s", npcModel.Name, bestDoor.Name))
+			bestDoorEvent:Fire()
+		end
+	end
+
 	-- ─── Waypoint collection ──────────────────────────────────────────────────────
 
 	local function resolveWaypointsRoot()
@@ -402,7 +481,7 @@ function NPCWaypointFollower.start(npcModel)
 
 	-- ─── Movement ─────────────────────────────────────────────────────────────────
 
-	local function moveTo(targetPos, offset)
+	local function moveTo(targetPos, offset, segmentStart, segmentEnd)
 		local effectiveOffset = offset or Vector3.zero
 		local goal = targetPos + effectiveOffset
 		local reached = false
@@ -449,8 +528,12 @@ function NPCWaypointFollower.start(npcModel)
 				stagnantTime = 0
 			end
 
-			-- Check for nearby doors during movement
-			tryOpenNearbyDoors()
+			-- Check for doors only if they sit on the path segment between the current node and the next node.
+			if segmentStart and segmentEnd then
+				tryOpenDoorsOnSegment(segmentStart, segmentEnd)
+			else
+				tryOpenNearbyDoors()
+			end
 
 			task.wait(TICK_RATE)
 			elapsed += TICK_RATE
@@ -460,6 +543,25 @@ function NPCWaypointFollower.start(npcModel)
 		-- Timed out — nudge the goal once more and move on.
 		humanoid:MoveTo(goal)
 		return false
+	end
+
+	local function getRouteNodesForWaypoint(currentNode, waypointPos, buildingName, floorName)
+		local sameFloorTarget = floorName and NodeGraph.getNearestNodeOnFloor(waypointPos, buildingName, floorName)
+		local targetNode = sameFloorTarget or NodeGraph.getNearestNode(waypointPos, buildingName, floorName)
+		if not targetNode then
+			return nil, nil
+		end
+
+		local path = nil
+		if currentNode then
+			path = NodeGraph.findPathBetweenNodes(currentNode, targetNode, buildingName)
+		end
+
+		if not path or #path == 0 then
+			path = { targetNode }
+		end
+
+		return path, targetNode
 	end
 
 	-- ─── Waypoint handlers ────────────────────────────────────────────────────────
@@ -533,9 +635,11 @@ function NPCWaypointFollower.start(npcModel)
 		end
 
 		-- Start from nearest node to NPC
-		local currentNode = nil
 		local preferFloor = npcModel:GetAttribute("FloorName")
-		currentNode = NodeGraph.getNearestNode(rootPart.Position, buildingName, preferFloor)
+		local currentNode = NodeGraph.getNearestNodeOnFloor(rootPart.Position, buildingName, preferFloor)
+		if not currentNode then
+			currentNode = NodeGraph.getNearestNode(rootPart.Position, buildingName, preferFloor)
+		end
 
 		for _, entry in ipairs(waypoints) do
 			if not npcModel.Parent then
@@ -547,29 +651,27 @@ function NPCWaypointFollower.start(npcModel)
 
 			local wp = entry.part
 			local wpType = wp:GetAttribute("WaypointType") or "Transit"
+			local waypointFloor = wp.Parent and wp.Parent.Name or preferFloor
 
-			local targetNode = NodeGraph.getNearestNode(wp.Position, buildingName)
+			local path, targetNode = getRouteNodesForWaypoint(currentNode, wp.Position, buildingName, waypointFloor)
 
-			if targetNode and currentNode then
-				local path = NodeGraph.findPathBetweenNodes(currentNode, targetNode, buildingName)
-				if path and #path > 0 then
-					for _, nodeInst in ipairs(path) do
-						if not npcModel.Parent or humanoid.Health <= 0 then
-							return
-						end
-						moveTo(nodeInst.Position, offset)
+			if path and #path > 0 then
+				for i, nodeInst in ipairs(path) do
+					if not npcModel.Parent or humanoid.Health <= 0 then
+						return
 					end
-				else
-					-- Fallback: attempt to move to the target node or waypoint position
-					if targetNode then
-						moveTo(targetNode.Position, offset)
-					else
-						moveTo(wp.Position, offset)
+
+					local segmentStart = nil
+					if i == 1 then
+						segmentStart = rootPart.Position
+					elseif path[i - 1] then
+						segmentStart = path[i - 1].Position
 					end
+
+					moveTo(nodeInst.Position, offset, segmentStart, nodeInst.Position)
 				end
 			else
-				-- No graph available; fall back to legacy waypoint move
-				moveTo(wp.Position, offset)
+				moveTo(wp.Position, offset, rootPart.Position, wp.Position)
 			end
 
 			-- After traversing nodes, perform the waypoint-specific behavior
@@ -591,7 +693,7 @@ function NPCWaypointFollower.start(npcModel)
 				currentNode = targetNode
 			else
 				-- if we couldn't resolve a node, attempt to re-resolve from the NPC position
-				currentNode = NodeGraph.getNearestNode(rootPart.Position, buildingName, preferFloor)
+				currentNode = NodeGraph.getNearestNodeOnFloor(rootPart.Position, buildingName, preferFloor) or NodeGraph.getNearestNode(rootPart.Position, buildingName, preferFloor)
 			end
 		end
 	end

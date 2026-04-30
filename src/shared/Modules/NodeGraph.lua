@@ -173,6 +173,50 @@ local function getNearestNode(position, buildingName, preferFloor)
     return graph.nodes[bestIdx].inst
 end
 
+local function getNearestNodeOnFloor(position, buildingName, floorName)
+    if not floorName then
+        return getNearestNode(position, buildingName)
+    end
+
+    local graph = buildGraphForBuilding(buildingName)
+    if not graph or #graph.nodes == 0 then
+        return nil
+    end
+
+    local bestDist = math.huge
+    local bestIdx = nil
+
+    for i, info in ipairs(graph.nodes) do
+        if info.floor == floorName then
+            local d = (info.pos - position).Magnitude
+            if d < bestDist then
+                bestDist = d
+                bestIdx = i
+            end
+        end
+    end
+
+    if bestIdx then
+        return graph.nodes[bestIdx].inst
+    end
+
+    return getNearestNode(position, buildingName, floorName)
+end
+
+local function getPathFloor(inst, buildingName)
+    local graph = buildGraphForBuilding(buildingName)
+    if not graph then
+        return nil
+    end
+
+    local idx = graph.instToIndex[inst]
+    if not idx then
+        return nil
+    end
+
+    return graph.nodes[idx] and graph.nodes[idx].floor or nil
+end
+
 local function findPathBetweenNodes(startInst, goalInst, buildingName)
     if not startInst or not goalInst then
         return nil
@@ -250,6 +294,8 @@ local function findPathBetweenNodes(startInst, goalInst, buildingName)
 end
 
 NodeGraph.getNearestNode = getNearestNode
+NodeGraph.getNearestNodeOnFloor = getNearestNodeOnFloor
+NodeGraph.getPathFloor = getPathFloor
 NodeGraph.findPathBetweenNodes = findPathBetweenNodes
 NodeGraph.markBuildingStale = markBuildingStale
 NodeGraph.buildGraphForBuilding = buildGraphForBuilding
