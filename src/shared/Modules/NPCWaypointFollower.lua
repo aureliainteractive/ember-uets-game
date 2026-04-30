@@ -41,8 +41,58 @@ local doorCache = {}
 local doorCacheLastUpdate = 0
 local DOOR_CACHE_UPDATE_INTERVAL = 5 -- seconds: rescan doors every 5 seconds
 
+local function getDoorFloorName(doorModel)
+	local current = doorModel
+	while current do
+		if current.Parent and current.Parent.Name == "Doors" then
+			return current.Name
+		end
+		current = current.Parent
+	end
+
+	return doorModel and doorModel:GetAttribute("FloorName") or nil
+end
+
+local function doorMatchesFloor(doorModel, floorName)
+	if not floorName then
+		return true
+	end
+
+	local doorFloor = doorModel and doorModel:GetAttribute("FloorName") or nil
+	if not doorFloor then
+		doorFloor = getDoorFloorName(doorModel)
+	end
+
+	return not doorFloor or doorFloor == floorName
+end
+
+local function normalizeName(value)
+	return string.lower(tostring(value or "")):gsub("[^%w]", "")
+end
+
+local function findChildAgnostic(parent, targetName)
+	if not parent or not targetName then
+		return nil
+	end
+
+	local exact = parent:FindFirstChild(targetName)
+	if exact then
+		return exact
+	end
+
+	local needle = normalizeName(targetName)
+	for _, child in ipairs(parent:GetChildren()) do
+		if normalizeName(child.Name) == needle then
+			return child
+		end
+	end
+
+	return nil
+end
+
 local function rebuildDoorCache()
 	doorCache = {}
+
 
 	-- Helper: given a Model (or ancestor), find the actual door container we should operate on.
 	local function findDoorContainer(candidateModel)
@@ -85,6 +135,7 @@ local function rebuildDoorCache()
 			local rootModel = modelAncestor or (descendant:IsA("Model") and descendant) or nil
 			local container = rootModel and findDoorContainer(rootModel) or nil
 			if container and not seen[container] then
+					container:SetAttribute("FloorName", getDoorFloorName(container))
 				table.insert(doorCache, container)
 				seen[container] = true
 			end
@@ -94,6 +145,7 @@ local function rebuildDoorCache()
 		if descendant:IsA("Model") and descendant.Name == "DoorModel" then
 			local container = findDoorContainer(descendant)
 			if container and not seen[container] then
+					container:SetAttribute("FloorName", getDoorFloorName(container))
 				table.insert(doorCache, container)
 				seen[container] = true
 			end
@@ -106,10 +158,12 @@ local function rebuildDoorCache()
 				mm = mm.Parent
 			end
 			if mm and not seen[mm] then
+					mm:SetAttribute("FloorName", getDoorFloorName(mm))
 				table.insert(doorCache, mm)
 				seen[mm] = true
 			end
 		end
+
 	end
 
 	doorCacheLastUpdate = tick()
@@ -245,7 +299,41 @@ function NPCWaypointFollower.start(npcModel)
 	-- Allows NPCs to automatically open doors when nearby.
 	-- Tracks door debounces per NPC to avoid spam.
 
-	local function tryOpenNearbyDoors()
+	local function getDoorOpenState(doorModel)
+		if not doorModel then
+			return nil
+		end
+
+		local isOpen = doorModel:GetAttribute("IsOpen")
+		if type(isOpen) == "boolean" then
+			return isOpen
+		end
+
+		local open = doorModel:GetAttribute("Open")
+		if type(open) == "boolean" then
+			return open
+		end
+
+		local opened = doorModel:GetAttribute("Opened")
+		if type(opened) == "boolean" then
+			return opened
+		end
+
+		local state = doorModel:GetAttribute("State")
+		if type(state) == "string" then
+			local s = string.lower(state)
+			if s == "open" or s == "opened" then
+				return true
+			end
+			if s == "closed" then
+				return false
+			end
+		end
+
+		return nil
+	end
+
+	local function tryOpenNearbyDoors(floorName)
 		if humanoid.Health <= 0 then
 			return
 		end
@@ -286,15 +374,21 @@ function NPCWaypointFollower.start(npcModel)
 				continue
 			end
 
-			-- Check if door is not already open
-			local isOpen = doorModel:GetAttribute("IsOpen") or false
-			if isOpen then
+			local openState = getDoorOpenState(doorModel)
+			if openState == true then
+				continue
+			end
+
+			if not doorMatchesFloor(doorModel, floorName) then
 				continue
 			end
 
 			-- Check debounce
 			if not doorDebounces[doorModel] then
 				doorDebounces[doorModel] = {}
+			end
+			if doorDebounces[doorModel].openedByNpc then
+				continue
 			end
 
 			local lastTriggered = doorDebounces[doorModel].lastTriggeredTime or 0
@@ -325,6 +419,7 @@ function NPCWaypointFollower.start(npcModel)
 				doorDebounces[closestDoor] = {}
 			end
 			doorDebounces[closestDoor].lastTriggeredTime = tick()
+			doorDebounces[closestDoor].openedByNpc = true
 			Logger.debug(
 				"NPC",
 				string.format("%s requested door open: %s (distance %d)", npcModel.Name, closestDoor.Name, math.floor(closestDistance))
@@ -345,7 +440,7 @@ function NPCWaypointFollower.start(npcModel)
 		return (point - closest).Magnitude, closest
 	end
 
-	local function tryOpenDoorsOnSegment(segmentStart, segmentEnd)
+	local function tryOpenDoorsOnSegment(segmentStart, segmentEnd, floorName)
 		if humanoid.Health <= 0 then
 			return
 		end
@@ -357,7 +452,6 @@ function NPCWaypointFollower.start(npcModel)
 		local bestDoor = nil
 		local bestDoorEvent = nil
 		local bestDoorDistance = math.huge
-		local _, closestPoint = segmentDistanceToPoint(segmentStart, segmentEnd, segmentStart)
 		local segmentMidY = (segmentStart.Y + segmentEnd.Y) * 0.5
 
 		for _, doorModel in ipairs(doorCache) do
@@ -373,6 +467,10 @@ function NPCWaypointFollower.start(npcModel)
 				continue
 			end
 
+			if not doorMatchesFloor(doorModel, floorName) then
+				continue
+			end
+
 			-- Only consider doors that are in the same vertical band as the path segment.
 			if math.abs(doorPos.Y - segmentMidY) > DOOR_SEGMENT_HEIGHT_TOLERANCE then
 				continue
@@ -385,6 +483,14 @@ function NPCWaypointFollower.start(npcModel)
 
 			if not doorDebounces[doorModel] then
 				doorDebounces[doorModel] = {}
+			end
+			if doorDebounces[doorModel].openedByNpc then
+				continue
+			end
+
+			local openState = getDoorOpenState(doorModel)
+			if openState == true then
+				continue
 			end
 
 			local lastTriggered = doorDebounces[doorModel].lastTriggeredTime or 0
@@ -406,6 +512,7 @@ function NPCWaypointFollower.start(npcModel)
 
 		if bestDoor and bestDoorEvent and bestDoorDistance <= DOOR_TRIGGER_DISTANCE then
 			doorDebounces[bestDoor].lastTriggeredTime = tick()
+			doorDebounces[bestDoor].openedByNpc = true
 			Logger.debug("NPC", string.format("%s requested door open on segment: %s", npcModel.Name, bestDoor.Name))
 			bestDoorEvent:Fire()
 		end
@@ -439,13 +546,13 @@ function NPCWaypointFollower.start(npcModel)
 			return {}
 		end
 
-		local buildingFolder = root:FindFirstChild(buildingName)
+		local buildingFolder = findChildAgnostic(root, buildingName)
 		if not buildingFolder then
 			Logger.warn("NPC", "Waypoint building folder not found: " .. tostring(buildingName))
 			return {}
 		end
 
-		local eventFolder = buildingFolder:FindFirstChild(eventType)
+		local eventFolder = findChildAgnostic(buildingFolder, eventType)
 		if not eventFolder then
 			Logger.warn("NPC", "Waypoint event folder not found: " .. tostring(eventType))
 			return {}
@@ -481,7 +588,7 @@ function NPCWaypointFollower.start(npcModel)
 
 	-- ─── Movement ─────────────────────────────────────────────────────────────────
 
-	local function moveTo(targetPos, offset, segmentStart, segmentEnd)
+	local function moveTo(targetPos, offset, segmentStart, segmentEnd, segmentFloor)
 		local effectiveOffset = offset or Vector3.zero
 		local goal = targetPos + effectiveOffset
 		local reached = false
@@ -530,9 +637,9 @@ function NPCWaypointFollower.start(npcModel)
 
 			-- Check for doors only if they sit on the path segment between the current node and the next node.
 			if segmentStart and segmentEnd then
-				tryOpenDoorsOnSegment(segmentStart, segmentEnd)
+				tryOpenDoorsOnSegment(segmentStart, segmentEnd, segmentFloor)
 			else
-				tryOpenNearbyDoors()
+				tryOpenNearbyDoors(segmentFloor)
 			end
 
 			task.wait(TICK_RATE)
@@ -597,6 +704,19 @@ function NPCWaypointFollower.start(npcModel)
 		return false -- signals run() to stop iterating
 	end
 
+	local function resolveWaypointFloor(wp, fallbackFloor)
+		local current = wp and wp.Parent
+		while current do
+			local floorNum = current.Name:match("^Floor(%d+)$")
+			if floorNum then
+				return "Floor" .. floorNum
+			end
+			current = current.Parent
+		end
+
+		return fallbackFloor
+	end
+
 	-- ─── Runner ───────────────────────────────────────────────────────────────────
 
 	local function run()
@@ -651,9 +771,10 @@ function NPCWaypointFollower.start(npcModel)
 
 			local wp = entry.part
 			local wpType = wp:GetAttribute("WaypointType") or "Transit"
-			local waypointFloor = wp.Parent and wp.Parent.Name or preferFloor
+			local waypointFloor = resolveWaypointFloor(wp, preferFloor)
 
 			local path, targetNode = getRouteNodesForWaypoint(currentNode, wp.Position, buildingName, waypointFloor)
+			local usedNodeTraversal = path and #path > 0
 
 			if path and #path > 0 then
 				for i, nodeInst in ipairs(path) do
@@ -668,15 +789,19 @@ function NPCWaypointFollower.start(npcModel)
 						segmentStart = path[i - 1].Position
 					end
 
-					moveTo(nodeInst.Position, offset, segmentStart, nodeInst.Position)
+					local segmentFloor = NodeGraph.getPathFloor(nodeInst, buildingName) or waypointFloor or preferFloor
+					moveTo(nodeInst.Position, offset, segmentStart, nodeInst.Position, segmentFloor)
 				end
 			else
-				moveTo(wp.Position, offset, rootPart.Position, wp.Position)
+				moveTo(wp.Position, offset, rootPart.Position, wp.Position, waypointFloor or preferFloor)
 			end
 
 			-- After traversing nodes, perform the waypoint-specific behavior
 			if wpType == "Transit" then
-				handleTransit(wp, offset)
+				-- Transit is node-driven only. If there is no node path, skip direct waypoint movement.
+				if not usedNodeTraversal then
+					Logger.warn("NPC", string.format("Skipping direct Transit for %s: no node route to %s", npcModel.Name, wp.Name))
+				end
 			elseif wpType == "Hold" then
 				handleHold(wp, offset)
 			elseif wpType == "Finish" then

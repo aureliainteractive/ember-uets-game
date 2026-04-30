@@ -11,6 +11,30 @@ local NPC_NODES_ROOT_NAME = "NPC_Nodes"
 local NEIGHBOR_RADIUS = 12 -- studs: default radius to implicitly connect nearby nodes
 local FLOOR_INTERCONNECT_BONUS = 1.5 -- allow slightly larger radius to connect stairs between floors
 
+local function normalizeName(value)
+    return string.lower(tostring(value or "")):gsub("[^%w]", "")
+end
+
+local function findChildAgnostic(parent, targetName)
+    if not parent or not targetName then
+        return nil
+    end
+
+    local exact = parent:FindFirstChild(targetName)
+    if exact then
+        return exact
+    end
+
+    local needle = normalizeName(targetName)
+    for _, child in ipairs(parent:GetChildren()) do
+        if normalizeName(child.Name) == needle then
+            return child
+        end
+    end
+
+    return nil
+end
+
 -- Cache per building: { nodes = { {inst=Instance, floor=string, pos=Vector3} }, instToIndex = {}, adjacency = { [i] = { {idx=_, cost=_}, ... } } }
 local buildingCache = {}
 local staleBuildings = {}
@@ -69,7 +93,7 @@ local function buildGraphForBuilding(buildingName)
         return nil
     end
 
-    local buildingFolder = root:FindFirstChild(buildingName)
+    local buildingFolder = findChildAgnostic(root, buildingName)
     if not buildingFolder then
         Logger.warn("NodeGraph", "Building folder not found: " .. tostring(buildingName))
         return nil

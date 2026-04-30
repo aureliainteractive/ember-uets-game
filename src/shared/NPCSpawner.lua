@@ -355,13 +355,37 @@ local function randomOffset(radius)
 	return Vector3.new(math.cos(angle) * dist, 0, math.sin(angle) * dist)
 end
 
+local function normalizeName(value)
+	return string.lower(tostring(value or "")):gsub("[^%w]", "")
+end
+
+local function findChildAgnostic(parent, targetName)
+	if not parent or not targetName then
+		return nil
+	end
+
+	local exact = parent:FindFirstChild(targetName)
+	if exact then
+		return exact
+	end
+
+	local needle = normalizeName(targetName)
+	for _, child in ipairs(parent:GetChildren()) do
+		if normalizeName(child.Name) == needle then
+			return child
+		end
+	end
+
+	return nil
+end
+
 local function getSpawnPoints(buildingName)
 	local root = workspace:FindFirstChild(SPAWNS_FOLDER)
 	if not root then
 		return { { part = nil, floorName = nil, cframe = CFrame.new(0, 5, 0) } }
 	end
 
-	local folder = root:FindFirstChild(buildingName)
+	local folder = findChildAgnostic(root, buildingName)
 	if not folder then
 		return { { part = nil, floorName = nil, cframe = CFrame.new(0, 5, 0) } }
 	end
