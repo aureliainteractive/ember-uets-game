@@ -87,6 +87,39 @@ end
 local function rebuildDoorCache()
 	doorCache = {}
 
+	local function ensureDoorPathProxy(doorModel)
+		if not doorModel or not doorModel:IsA("Model") then return end
+		local proxy = doorModel:FindFirstChild("DoorPathfindingProxy")
+		if proxy and not proxy:IsA("BasePart") then
+			proxy:Destroy()
+			proxy = nil
+		end
+
+		if not proxy then
+			proxy = Instance.new("Part")
+			proxy.Name = "DoorPathfindingProxy"
+			proxy.Anchored = true
+			proxy.CanCollide = false
+			proxy.CanQuery = false
+			proxy.CanTouch = false
+			proxy.Transparency = 1
+			proxy.Parent = doorModel
+
+			local modifier = Instance.new("PathfindingModifier")
+			modifier.PassThrough = true
+			modifier.Parent = proxy
+		end
+
+		local ok, cf = pcall(function() return doorModel:GetPivot() end)
+		local size = doorModel:GetExtentsSize()
+		if ok and cf then
+			proxy.CFrame = cf
+		end
+		if size then
+			proxy.Size = size + Vector3.new(0.5, 0.5, 0.5)
+		end
+	end
+
 	local function findDoorContainer(candidateModel)
 		if not candidateModel or not candidateModel:IsA("Model") then return nil end
 		local nested = candidateModel:FindFirstChild("DoorModel", true)
@@ -111,6 +144,7 @@ local function rebuildDoorCache()
 			local container = modelAncestor and findDoorContainer(modelAncestor) or nil
 			if container and not seen[container] then
 				container:SetAttribute("FloorName", getDoorFloorName(container))
+				ensureDoorPathProxy(container)
 				table.insert(doorCache, container)
 				seen[container] = true
 			end
@@ -119,6 +153,7 @@ local function rebuildDoorCache()
 			local container = findDoorContainer(descendant)
 			if container and not seen[container] then
 				container:SetAttribute("FloorName", getDoorFloorName(container))
+				ensureDoorPathProxy(container)
 				table.insert(doorCache, container)
 				seen[container] = true
 			end
@@ -128,6 +163,7 @@ local function rebuildDoorCache()
 			while mm and not mm:IsA("Model") do mm = mm.Parent end
 			if mm and not seen[mm] then
 				mm:SetAttribute("FloorName", getDoorFloorName(mm))
+				ensureDoorPathProxy(mm)
 				table.insert(doorCache, mm)
 				seen[mm] = true
 			end
