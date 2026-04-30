@@ -592,7 +592,7 @@ function NPCWaypointFollower.start(npcModel)
 					))
 					loggedWait = true
 				end
-				if tick() - waitStart > PATHFINDING_SLOT_TIMEOUT then
+				if canFallback and tick() - waitStart > PATHFINDING_SLOT_TIMEOUT then
 					return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-slot-timeout")
 				end
 				task.wait(0.05)
@@ -620,8 +620,11 @@ function NPCWaypointFollower.start(npcModel)
 
 			if not ok or path.Status ~= Enum.PathStatus.Success then
 				Logger.debug("NPC", string.format(
-					"%s: pathfinding failed (%s) status=%s; falling back to direct move",
-					npcModel.Name, tostring(err), tostring(path.Status)
+					"%s: pathfinding failed (%s) status=%s%s",
+					npcModel.Name,
+					tostring(err),
+					tostring(path.Status),
+					canFallback and "; falling back to direct move" or "; strict mode"
 				))
 				if canFallback and hasLineOfSight(rootPart.Position, goal) then
 					return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-fallback")
@@ -632,8 +635,9 @@ function NPCWaypointFollower.start(npcModel)
 			local waypoints = path:GetWaypoints()
 			if #waypoints == 0 then
 				Logger.debug("NPC", string.format(
-					"%s: path computed but returned 0 waypoints; falling back to direct move",
-					npcModel.Name
+					"%s: path computed but returned 0 waypoints%s",
+					npcModel.Name,
+					canFallback and "; falling back to direct move" or "; strict mode"
 				))
 				if canFallback and hasLineOfSight(rootPart.Position, goal) then
 					return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-empty")
@@ -685,7 +689,14 @@ function NPCWaypointFollower.start(npcModel)
 			end
 		end
 
-		return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-timeout")
+		if canFallback then
+			return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-timeout")
+		end
+		Logger.warn("NPC", string.format(
+			"%s: pathfinding timed out; strict mode stop",
+			npcModel.Name
+		))
+		return false
 	end
 
 	-- ─── Pathfinding helpers ──────────────────────────────────────────────────
