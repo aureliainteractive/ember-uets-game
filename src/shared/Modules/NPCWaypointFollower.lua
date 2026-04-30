@@ -354,6 +354,24 @@ function NPCWaypointFollower.start(npcModel)
 		return tonumber(name:match("^Waypoint[_%-]?(%d+)$")) or tonumber(name:match("^WP(%d+)$"))
 	end
 
+	local function resolveWaypointFloorName(waypointPart)
+		if not waypointPart then return nil end
+		local current = waypointPart
+		while current do
+			local attr = current:GetAttribute("FloorName")
+			if type(attr) == "string" and attr ~= "" then
+				return attr
+			end
+			local n = current.Name
+			local num = n:match("^[Ff]loor(%d+)$")
+			if num then
+				return "Floor" .. num
+			end
+			current = current.Parent
+		end
+		return nil
+	end
+
 	local function collectWaypoints(buildingName, eventType)
 		local root = resolveWaypointsRoot()
 		if not root then return {} end
@@ -374,7 +392,10 @@ function NPCWaypointFollower.start(npcModel)
 		for _, descendant in ipairs(eventFolder:GetDescendants()) do
 			if descendant:IsA("BasePart") then
 				local n = parseWaypointIndex(descendant.Name)
-				if n then table.insert(list, { index = n, part = descendant }) end
+				if n then
+					local floorName = resolveWaypointFloorName(descendant)
+					table.insert(list, { index = n, part = descendant, floorName = floorName })
+				end
 			end
 		end
 
@@ -455,8 +476,13 @@ function NPCWaypointFollower.start(npcModel)
 	-- Returns (path, targetNode) where path is an ordered list of node BaseParts.
 	-- The target node is the nearest node to the waypoint in ANY floor — the A*
 	-- in NodeGraph handles floor transitions via Floor1u2 staircase nodes.
-	local function getRouteToPosition(currentNode, targetPos, buildingName)
-		local targetNode = NodeGraph.getNearestNode(targetPos, buildingName)
+	local function getRouteToPosition(currentNode, targetPos, buildingName, waypointFloor)
+		local targetNode
+		if waypointFloor then
+			targetNode = NodeGraph.getNearestNodeOnFloor(targetPos, buildingName, waypointFloor)
+		else
+			targetNode = NodeGraph.getNearestNode(targetPos, buildingName)
+		end
 		if not targetNode then return nil, nil end
 
 		local path = nil
@@ -545,11 +571,12 @@ function NPCWaypointFollower.start(npcModel)
 
 			local wp     = entry.part
 			local wpType = wp:GetAttribute("WaypointType") or "Transit"
+			local wpFloor = entry.floorName
 
 			-- Resolve path from currentNode to the nearest node to this waypoint.
 			-- No floor constraint on the target — the graph routes across floors
 			-- automatically through Floor1u2 staircase nodes.
-			local path, targetNode = getRouteToPosition(currentNode, wp.Position, buildingName)
+			local path, targetNode = getRouteToPosition(currentNode, wp.Position, buildingName, wpFloor)
 
 			-- Walk the node path
 			if path and #path > 0 then
@@ -579,8 +606,8 @@ function NPCWaypointFollower.start(npcModel)
 			end
 
 			-- Derive the floor at the end of this segment
-			local arrivalFloor = targetNode
-				and NodeGraph.getPathFloor(targetNode, buildingName)
+			local arrivalFloor = wpFloor
+				or (targetNode and NodeGraph.getPathFloor(targetNode, buildingName))
 				or preferFloor
 
 			-- Waypoint-specific behaviour after graph traversal
