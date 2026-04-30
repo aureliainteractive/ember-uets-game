@@ -477,40 +477,62 @@ function NPCWaypointFollower.start(npcModel)
 	local function moveUsingPathfinding(targetPos, offset, floorName)
 		local effectiveOffset = offset or Vector3.zero
 		local goal = targetPos + effectiveOffset
-		local path = PathfindingService:CreatePath()
-		local ok, err = pcall(function()
-			path:ComputeAsync(rootPart.Position, goal)
-		end)
-		if not ok or path.Status ~= Enum.PathStatus.Success then
-			Logger.debug("NPC", string.format(
-				"%s: pathfinding failed (%s); falling back to direct move",
-				npcModel.Name, tostring(err or path.Status)
-			))
-			return moveTo(targetPos, offset, rootPart.Position, goal, floorName)
-		end
+		local deadline = tick() + PATHFINDING_TIMEOUT
 
-		local waypoints = path:GetWaypoints()
-		if #waypoints == 0 then
-			return moveTo(targetPos, offset, rootPart.Position, goal, floorName)
-		end
-
-		local prevPos = rootPart.Position
-		local startTick = tick()
-		for i, wp in ipairs(waypoints) do
+		while tick() < deadline do
 			if humanoid.Health <= 0 or not npcModel.Parent then return false end
-			if wp.Action == Enum.PathWaypointAction.Jump then
-				humanoid.Jump = true
+
+			local path = PathfindingService:CreatePath()
+			local ok, err = pcall(function()
+				path:ComputeAsync(rootPart.Position, goal)
+			end)
+			if not ok or path.Status ~= Enum.PathStatus.Success then
+				Logger.debug("NPC", string.format(
+					"%s: pathfinding failed (%s); falling back to direct move",
+					npcModel.Name, tostring(err or path.Status)
+				))
+				return moveTo(targetPos, offset, rootPart.Position, goal, floorName)
 			end
-			local isLast = (i == #waypoints)
-			local wpOffset = isLast and offset or nil
-			local okMove = moveTo(wp.Position, wpOffset, prevPos, wp.Position, floorName)
-			prevPos = wp.Position
-			if not okMove and (tick() - startTick) > PATHFINDING_TIMEOUT then
-				break
+
+			local waypoints = path:GetWaypoints()
+			if #waypoints == 0 then
+				return moveTo(targetPos, offset, rootPart.Position, goal, floorName)
+			end
+
+			local nextWaypointIndex = 2
+			local blockedAhead = false
+			local blockedConn = path.Blocked:Connect(function(blockedIndex)
+				if blockedIndex >= nextWaypointIndex then
+					blockedAhead = true
+				end
+			end)
+
+			local prevPos = rootPart.Position
+			while nextWaypointIndex <= #waypoints do
+				if humanoid.Health <= 0 or not npcModel.Parent then
+					blockedConn:Disconnect()
+					return false
+				end
+				if blockedAhead then break end
+
+				local wp = waypoints[nextWaypointIndex]
+				if wp.Action == Enum.PathWaypointAction.Jump then
+					humanoid.Jump = true
+				end
+				local isLast = (nextWaypointIndex == #waypoints)
+				local wpOffset = isLast and offset or nil
+				moveTo(wp.Position, wpOffset, prevPos, wp.Position, floorName)
+				prevPos = wp.Position
+				nextWaypointIndex += 1
+			end
+
+			blockedConn:Disconnect()
+			if not blockedAhead then
+				return true
 			end
 		end
 
-		return true
+		return moveTo(targetPos, offset, rootPart.Position, goal, floorName)
 	end
 
 	-- ─── Pathfinding helpers ──────────────────────────────────────────────────
