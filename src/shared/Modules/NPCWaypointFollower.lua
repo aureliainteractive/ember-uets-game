@@ -44,13 +44,14 @@ local STUCK_MOVEMENT_EPSILON      = 0.05
 local STUCK_NUDGE_RADIUS          = 2.0
 
 local PATHFINDING_TIMEOUT         = 6
-local PATH_COMPUTE_TIMEOUT        = 2.5
+local MAX_CONCURRENT_PATHS        = 4
 
 -- ─── Global door cache ────────────────────────────────────────────────────────
 
 local doorCache = {}
 local doorCacheLastUpdate  = 0
 local DOOR_CACHE_UPDATE_INTERVAL = 5
+local activePathComputes = 0
 
 local function getDoorFloorName(doorModel)
 	local current = doorModel
@@ -534,46 +535,25 @@ function NPCWaypointFollower.start(npcModel)
 			npcModel.Name, startPos.X, startPos.Y, startPos.Z, goal.X, goal.Y, goal.Z
 		))
 
-		local function computePathWithTimeout(fromPos, toPos)
-			local path = PathfindingService:CreatePath()
-			local done = false
-			local ok = false
-			local err
-			task.spawn(function()
-				ok, err = pcall(function()
-					path:ComputeAsync(fromPos, toPos)
-				end)
-				done = true
-			end)
-
-			local waited = 0
-			while not done and waited < PATH_COMPUTE_TIMEOUT do
-				task.wait(0.05)
-				waited += 0.05
-			end
-
-			if not done then
-				return nil, "timeout"
-			end
-			if not ok then
-				return nil, err
-			end
-			return path, nil
-		end
-
 		while tick() < deadline do
 			if humanoid.Health <= 0 or not npcModel.Parent then return false end
 
-			local path, err = computePathWithTimeout(rootPart.Position, goal)
-			if not path then
+			while activePathComputes >= MAX_CONCURRENT_PATHS do
 				Logger.debug("NPC", string.format(
-					"%s: pathfinding compute failed (%s); falling back to direct move",
-					npcModel.Name, tostring(err)
+					"%s: waiting for pathfinding slot (%d/%d)",
+					npcModel.Name, activePathComputes, MAX_CONCURRENT_PATHS
 				))
-				return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-fallback")
+				task.wait(0.05)
 			end
 
-			if path.Status ~= Enum.PathStatus.Success then
+			activePathComputes += 1
+			local path = PathfindingService:CreatePath()
+			local ok, err = pcall(function()
+				path:ComputeAsync(rootPart.Position, goal)
+			end)
+			activePathComputes -= 1
+
+			if not ok or path.Status ~= Enum.PathStatus.Success then
 				Logger.debug("NPC", string.format(
 					"%s: pathfinding failed (%s) status=%s; falling back to direct move",
 					npcModel.Name, tostring(err), tostring(path.Status)
