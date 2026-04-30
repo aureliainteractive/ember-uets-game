@@ -114,6 +114,13 @@ local function rebuildDoorCache()
 			modifier.Parent = proxy
 		end
 
+		local doorPart = doorModel:FindFirstChild("Door")
+		if doorPart and doorPart:IsA("BasePart") then
+			proxy.CFrame = doorPart.CFrame
+			proxy.Size = doorPart.Size + Vector3.new(1, 1, 1)
+			return
+		end
+
 		local ok, cf = pcall(function() return doorModel:GetPivot() end)
 		local size = doorModel:GetExtentsSize()
 		if ok and cf then
@@ -127,6 +134,22 @@ local function rebuildDoorCache()
 				math.max(minSize.Y, padded.Y),
 				math.max(minSize.Z, padded.Z)
 			)
+		end
+	end
+
+	local function ensureDoorPassThroughParts(doorModel)
+		if not doorModel or not doorModel:IsA("Model") then return end
+		for _, part in ipairs(doorModel:GetDescendants()) do
+			if part:IsA("BasePart") then
+				local modifier = part:FindFirstChild("DoorPathfindingModifier")
+				if not modifier then
+					modifier = Instance.new("PathfindingModifier")
+					modifier.Name = "DoorPathfindingModifier"
+					modifier.Label = "DoorPass"
+					modifier.PassThrough = true
+					modifier.Parent = part
+				end
+			end
 		end
 	end
 
@@ -155,6 +178,7 @@ local function rebuildDoorCache()
 			if container and not seen[container] then
 				container:SetAttribute("FloorName", getDoorFloorName(container))
 				ensureDoorPathProxy(container)
+				ensureDoorPassThroughParts(container)
 				table.insert(doorCache, container)
 				seen[container] = true
 			end
@@ -164,6 +188,7 @@ local function rebuildDoorCache()
 			if container and not seen[container] then
 				container:SetAttribute("FloorName", getDoorFloorName(container))
 				ensureDoorPathProxy(container)
+				ensureDoorPassThroughParts(container)
 				table.insert(doorCache, container)
 				seen[container] = true
 			end
@@ -174,6 +199,7 @@ local function rebuildDoorCache()
 			if mm and not seen[mm] then
 				mm:SetAttribute("FloorName", getDoorFloorName(mm))
 				ensureDoorPathProxy(mm)
+				ensureDoorPassThroughParts(mm)
 				table.insert(doorCache, mm)
 				seen[mm] = true
 			end
@@ -533,11 +559,20 @@ function NPCWaypointFollower.start(npcModel)
 		return false
 	end
 
-	local function moveUsingPathfinding(targetPos, offset, floorName)
+	local function hasLineOfSight(fromPos, toPos)
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = { npcModel }
+		local result = workspace:Raycast(fromPos, toPos - fromPos, params)
+		return result == nil
+	end
+
+	local function moveUsingPathfinding(targetPos, offset, floorName, allowFallback)
 		local effectiveOffset = offset or Vector3.zero
 		local goal = targetPos + effectiveOffset
 		local deadline = tick() + PATHFINDING_TIMEOUT
 		local startPos = rootPart.Position
+		local canFallback = (allowFallback ~= false)
 
 		Logger.debug("NPC", string.format(
 			"%s: pathfinding from (%.1f, %.1f, %.1f) to (%.1f, %.1f, %.1f)",
@@ -564,8 +599,10 @@ function NPCWaypointFollower.start(npcModel)
 			end
 
 			activePathComputes += 1
-			local agentRadius = math.max(2, (rootPart.Size.X + rootPart.Size.Z) * 0.25)
-			local agentHeight = math.max(5, humanoid.HipHeight * 2 + 2)
+			local agentRadiusRaw = (rootPart.Size.X + rootPart.Size.Z) * 0.25
+			local agentRadius = math.clamp(agentRadiusRaw, 1.5, 2.5)
+			local agentHeightRaw = humanoid.HipHeight * 2 + 2
+			local agentHeight = math.clamp(agentHeightRaw, 5, 6)
 			local path = PathfindingService:CreatePath({
 				AgentRadius = agentRadius,
 				AgentHeight = agentHeight,
@@ -586,7 +623,10 @@ function NPCWaypointFollower.start(npcModel)
 					"%s: pathfinding failed (%s) status=%s; falling back to direct move",
 					npcModel.Name, tostring(err), tostring(path.Status)
 				))
-				return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-fallback")
+				if canFallback and hasLineOfSight(rootPart.Position, goal) then
+					return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-fallback")
+				end
+				return false
 			end
 
 			local waypoints = path:GetWaypoints()
@@ -595,7 +635,10 @@ function NPCWaypointFollower.start(npcModel)
 					"%s: path computed but returned 0 waypoints; falling back to direct move",
 					npcModel.Name
 				))
-				return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-empty")
+				if canFallback and hasLineOfSight(rootPart.Position, goal) then
+					return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-empty")
+				end
+				return false
 			end
 
 			Logger.debug("NPC", string.format(
@@ -739,7 +782,7 @@ function NPCWaypointFollower.start(npcModel)
 
 		-- First leg: pathfind from spawn to the initial node
 		if currentNode and (rootPart.Position - currentNode.Position).Magnitude > ARRIVE_RADIUS then
-			moveUsingPathfinding(currentNode.Position, offset, preferFloor)
+			moveUsingPathfinding(currentNode.Position, offset, preferFloor, false)
 		end
 
 		-- ── Waypoint loop ───────────────────────────────────────────────────────
