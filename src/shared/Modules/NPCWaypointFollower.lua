@@ -717,7 +717,13 @@ function NPCWaypointFollower.start(npcModel)
 	-- ─── Waypoint behaviour handlers ─────────────────────────────────────────
 
 	local function handleHold(wp, offset, floorName)
-		moveUsingPathfinding(wp.Position, offset, floorName)
+		if moveUsingPathfinding(wp.Position, offset, floorName, false) == false then
+			Logger.warn("NPC", string.format(
+				"%s: pathfinding to Hold waypoint failed; stopping",
+				npcModel.Name
+			))
+			return false
+		end
 		if humanoid.Health <= 0 then return end
 		local holdDuration = wp:GetAttribute("HoldDuration") or 3
 		local held = 0
@@ -730,7 +736,13 @@ function NPCWaypointFollower.start(npcModel)
 	end
 
 	local function handleFinish(wp, offset, floorName)
-		moveUsingPathfinding(wp.Position, offset, floorName)
+		if moveUsingPathfinding(wp.Position, offset, floorName, false) == false then
+			Logger.warn("NPC", string.format(
+				"%s: pathfinding to Finish waypoint failed; stopping",
+				npcModel.Name
+			))
+			return false
+		end
 		task.spawn(function()
 			local finalPos = wp.Position + (offset or Vector3.zero)
 			while npcModel.Parent and humanoid.Health > 0 do
@@ -834,13 +846,19 @@ function NPCWaypointFollower.start(npcModel)
 
 			-- Waypoint-specific behaviour after graph traversal
 			if wpType == "Hold" then
-				handleHold(wp, offset, arrivalFloor)
+				if handleHold(wp, offset, arrivalFloor) == false then return end
 			elseif wpType == "Finish" then
 				if handleFinish(wp, offset, arrivalFloor) == false then return end
 			else
 				-- Transit (default): do a final precise step to the waypoint position.
 				-- The node path brings NPCs close; this step lands them exactly on target.
-				moveUsingPathfinding(wp.Position, offset, arrivalFloor)
+				if moveUsingPathfinding(wp.Position, offset, arrivalFloor, false) == false then
+					Logger.warn("NPC", string.format(
+						"%s: pathfinding to Transit waypoint failed; stopping",
+						npcModel.Name
+					))
+					return
+				end
 			end
 
 			-- Advance currentNode for the next iteration
