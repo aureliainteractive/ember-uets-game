@@ -12,19 +12,6 @@ local refugeesFolder = workspace:WaitForChild("Refugees")
 
 local NavigationUtils = {}
 
-local TELEPORT_EVENT_NAME = "Navigation_Teleport"
-
-local function getTeleportEvent()
-	local existing = ReplicatedStorage:FindFirstChild(TELEPORT_EVENT_NAME)
-	if existing and existing:IsA("RemoteEvent") then
-		return existing
-	end
-	local ev = Instance.new("RemoteEvent")
-	ev.Name = TELEPORT_EVENT_NAME
-	ev.Parent = ReplicatedStorage
-	return ev
-end
-
 -- Teleports a player to a target BasePart with a small vertical offset.
 function NavigationUtils.teleportPlayer(player, targetPart)
 	if not player or not player.Character then
@@ -32,18 +19,7 @@ function NavigationUtils.teleportPlayer(player, targetPart)
 	end
 	local hrp = player.Character:FindFirstChild("HumanoidRootPart")
 	if hrp and targetPart then
-		local targetCFrame = targetPart.CFrame + Vector3.new(0, 3, 0)
-		local ok
-		-- Intentar delegar al cliente para que haga el teleport (VR-safe)
-		local teleportEvent = getTeleportEvent()
-		ok = pcall(function()
-			teleportEvent:FireClient(player, targetCFrame)
-		end)
-		if ok then
-			return true
-		end
-		-- Fallback: aplicar server-side si el cliente no procesó el evento
-		hrp.CFrame = targetCFrame
+		hrp.CFrame = targetPart.CFrame + Vector3.new(0, 3, 0)
 		return true
 	end
 	return false
