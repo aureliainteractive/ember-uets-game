@@ -4,6 +4,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local VRService = game:GetService("VRService")
 
 local PLAYER = Players.LocalPlayer
 local REMOTE_EVENT_NAME = "EmberMovementUpdate"
@@ -94,7 +95,7 @@ movementEvent.OnClientEvent:Connect(function(direction, serverStaleSeconds)
 	end
 end)
 
-RunService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(function(dt)
 	local humanoid = getController()
 	if not humanoid then
 		return
@@ -113,5 +114,23 @@ RunService.RenderStepped:Connect(function()
 		return
 	end
 
-	humanoid:Move(directionToMoveVector(direction), false)
+	if VRService and VRService.VREnabled then
+		local character = PLAYER.Character
+		local moveVec = directionToMoveVector(direction)
+		local speed = humanoid.WalkSpeed or 16
+		local delta = moveVec * speed * dt
+		if character and character:IsA("Model") then
+			if character.Pivot and character.Pivot ~= nil and character.GetPivot then
+				local currentPivot = character:GetPivot()
+				character:PivotTo(currentPivot + Vector3.new(delta.X, delta.Y, delta.Z))
+				else
+					local hrp = character:FindFirstChild("HumanoidRootPart")
+					if hrp then
+						hrp.CFrame = hrp.CFrame + delta
+					end
+			end
+		end
+	else
+		humanoid:Move(directionToMoveVector(direction), false)
+	end
 end)
