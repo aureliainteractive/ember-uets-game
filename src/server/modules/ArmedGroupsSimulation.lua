@@ -36,6 +36,7 @@ local function endArmedGroupsByDeath(player, locationName, spawnedNPCs, services
 	end
 
 	services.HUDService.stopTicker(player)
+	services.stopExternalSimulation(player)
 	state.playerSimulationData[player.UserId] = nil
 	services.setPowerMode("NORMAL")
 	services.setSimulationActive("ArmedGroups", locationName, false)
@@ -51,6 +52,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 	local prepTimes = { [1] = 7, [2] = 5, [3] = 4 }
 
 	if not services.canStartSimulation("ArmedGroups", locationName) then
+		services.stopExternalSimulation(player)
 		DialogService.send(player, "Error", "Ya hay un simulacro activo en esta ubicacion.")
 		return
 	end
@@ -63,6 +65,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 	if not spawnFolder then
 		DialogService.send(player, "Error", "No se pudo cargar la ubicacion del ejercicio.")
 		services.setSimulationActive("ArmedGroups", locationName, false)
+		services.stopExternalSimulation(player)
 		return
 	end
 
@@ -103,6 +106,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 		services.setPowerMode("NORMAL")
 		services.setSimulationActive("ArmedGroups", locationName, false)
 		services.HUDService.stopTicker(player)
+		services.stopExternalSimulation(player)
 		return
 	end
 
@@ -158,6 +162,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 		services.setPowerMode("NORMAL")
 		services.setSimulationActive("ArmedGroups", locationName, false)
 		services.HUDService.stopTicker(player)
+		services.stopExternalSimulation(player)
 		state.playerSimulationData[player.UserId] = nil
 		return
 	end
@@ -193,6 +198,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 				services.setSimulationActive("ArmedGroups", locationName, false)
 				services.controllerHUDEvent:FireClient(player, "Hide")
 				services.HUDService.stopTicker(player)
+				services.stopExternalSimulation(player)
 				state.playerSimulationData[player.UserId] = nil
 				return
 			end
@@ -219,6 +225,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 					services.setSimulationActive("ArmedGroups", locationName, false)
 					services.controllerHUDEvent:FireClient(player, "Hide")
 					services.HUDService.stopTicker(player)
+					services.stopExternalSimulation(player)
 					state.playerSimulationData[player.UserId] = nil
 					return
 				end
@@ -254,6 +261,7 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 						services.mainLobbySpawn
 					)
 					services.HUDService.stopTicker(player)
+					services.stopExternalSimulation(player)
 					state.playerSimulationData[player.UserId] = nil
 				end)
 			end)

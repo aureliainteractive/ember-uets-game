@@ -5,7 +5,7 @@ local Players = game:GetService("Players")
 local modules = script.Parent:WaitForChild("modules")
 local DialogService = require(modules:WaitForChild("DialogService"))
 local NavigationUtils = require(modules:WaitForChild("NavigationUtils"))
-local ActuatorService = require(modules:WaitForChild("ActuatorService"))
+local EmberSimulationService = require(modules:WaitForChild("EmberSimulationService"))
 local HUDService = require(modules:WaitForChild("HUDService"))
 local FireSimulation = require(modules:WaitForChild("FireSimulation"))
 local EarthquakeSimulation = require(modules:WaitForChild("EarthquakeSimulation"))
@@ -15,7 +15,7 @@ local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Lo
 local simulationStartBindable = ReplicatedStorage:WaitForChild("SimulationStartBindable")
 local highlightPartBindable = ReplicatedStorage:WaitForChild("HighlightPartBindable")
 local finishedTaskBindable = ReplicatedStorage:WaitForChild("FinishedTaskBindable")
-local physicalActuatorBindable = ReplicatedStorage:WaitForChild("PhysicalActuatorBindable")
+local physicalActuatorBindable = ReplicatedStorage:FindFirstChild("PhysicalActuatorBindable")
 local controllerHUDEvent = ReplicatedStorage:WaitForChild("ControllerUI_HUD")
 local hudUpdateEvent = ReplicatedStorage:WaitForChild("HUDUpdate")
 
@@ -50,6 +50,20 @@ end
 
 local function setSimulationActive(simType, locationName, active)
 	activeSimulations[simType .. "_" .. locationName] = active or nil
+end
+
+local function getActiveSimulationKey(eventType)
+	if eventType == "FireSimulation" then
+		return "Fire"
+	elseif eventType == "EarthquakeSimulation" then
+		return "Earthquake"
+	elseif eventType == "ArmedGroupsSimulation" then
+		return "ArmedGroups"
+	elseif eventType == "ExploreSimulation" then
+		return "Explore"
+	end
+
+	return nil
 end
 
 local function setPowerMode(mode)
@@ -90,6 +104,15 @@ local function startExploreSimulation(player, locationName, _difficulty)
 		audioPlayer:Play()
 	end
 	Logger.info("System", string.format("Explore simulation started for %s at %s", player.Name, locationName))
+end
+
+local function stopExternalSimulation(player)
+	local ok, err = EmberSimulationService.stop(player)
+	if not ok and player and player.Parent then
+		DialogService.send(player, "Warning", "No se pudo notificar el fin de simulacro a EMBER Server.")
+		Logger.warn("Network", "simulation_stop notification failed: " .. tostring(err))
+	end
+	return ok
 end
 
 finishedTaskBindable.Event:Connect(function(player, taskName, callback)
@@ -133,9 +156,17 @@ highlightPartBindable.Event:Connect(function(player, part, enable, callback)
 	end
 end)
 
-physicalActuatorBindable.Event:Connect(function(player, actuatorName, value, duration, callback)
-	ActuatorService.fire(player, actuatorName, value, duration, callback)
-end)
+if physicalActuatorBindable and physicalActuatorBindable:IsA("BindableEvent") then
+	physicalActuatorBindable.Event:Connect(function(_player, actuatorName, _value, _duration, callback)
+		Logger.warn(
+			"Network",
+			string.format("Legacy actuator command ignored: %s. Actuators are controlled by ember-server.", tostring(actuatorName))
+		)
+		if callback then
+			callback(false, "Actuadores ahora son controlados por ember-server")
+		end
+	end)
+end
 
 Players.PlayerRemoving:Connect(function(player)
 	local simData = playerSimulationData[player.UserId]
@@ -155,6 +186,7 @@ Players.PlayerRemoving:Connect(function(player)
 	if simData.simulationEnded ~= nil then
 		simData.simulationEnded = true
 	end
+	stopExternalSimulation(player)
 	playerSimulationData[player.UserId] = nil
 	pendingSimulationStarts[player.UserId] = nil
 	Logger.debug("System", string.format("Simulation state cleared for %s", player.Name))
@@ -172,6 +204,21 @@ local function startSimulationNow(player, eventType, locationName, difficulty)
 		stopIntercom()
 	end
 
+	local activeKey = getActiveSimulationKey(eventType)
+	if activeKey and not canStartSimulation(activeKey, locationName) then
+		DialogService.send(player, "Error", "Ya hay un simulacro activo en esta ubicacion.")
+		return
+	end
+
+	if eventType ~= "ExploreSimulation" then
+		local externalStarted, externalErr = EmberSimulationService.start(player, eventType, difficulty)
+		if not externalStarted then
+			DialogService.send(player, "Error", "No se pudo iniciar el simulacro en EMBER Server.")
+			Logger.warn("Network", "simulation_start notification failed: " .. tostring(externalErr))
+			return
+		end
+	end
+
 	local services = {
 		setPowerMode = setPowerMode,
 		canStartSimulation = canStartSimulation,
@@ -184,21 +231,31 @@ local function startSimulationNow(player, eventType, locationName, difficulty)
 		FIRE_ALARM_SOUND_ID = FIRE_ALARM_SOUND_ID,
 		EARTHQUAKE_ALARM_SOUND_ID = EARTHQUAKE_ALARM_SOUND_ID,
 		SIMULATION_GLOBAL_TIMEOUT = SIMULATION_GLOBAL_TIMEOUT,
+		stopExternalSimulation = stopExternalSimulation,
+		startEarthquakeMotor = EmberSimulationService.startEarthquakeMotor,
 	}
 	local state = {
 		playerSimulationData = playerSimulationData,
 	}
 
-	if eventType == "FireSimulation" then
-		FireSimulation.start(player, locationName, difficulty, services, state)
-	elseif eventType == "EarthquakeSimulation" then
-		EarthquakeSimulation.start(player, locationName, difficulty, services, state)
-	elseif eventType == "ArmedGroupsSimulation" then
-		ArmedGroupsSimulation.start(player, locationName, difficulty, services, state)
-	elseif eventType == "ExploreSimulation" then
-		startExploreSimulation(player, locationName, difficulty)
-	else
-		DialogService.send(player, "Error", "Tipo de simulacro no reconocido: " .. tostring(eventType))
+	local ok, err = pcall(function()
+		if eventType == "FireSimulation" then
+			FireSimulation.start(player, locationName, difficulty, services, state)
+		elseif eventType == "EarthquakeSimulation" then
+			EarthquakeSimulation.start(player, locationName, difficulty, services, state)
+		elseif eventType == "ArmedGroupsSimulation" then
+			ArmedGroupsSimulation.start(player, locationName, difficulty, services, state)
+		elseif eventType == "ExploreSimulation" then
+			startExploreSimulation(player, locationName, difficulty)
+		else
+			DialogService.send(player, "Error", "Tipo de simulacro no reconocido: " .. tostring(eventType))
+		end
+	end)
+
+	if not ok then
+		stopExternalSimulation(player)
+		Logger.error("System", "Simulation start crashed: " .. tostring(err))
+		DialogService.send(player, "Error", "El simulacro fallo al iniciar. EMBER Server fue restaurado.")
 	end
 end
 

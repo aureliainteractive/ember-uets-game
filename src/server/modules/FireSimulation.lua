@@ -1,12 +1,11 @@
 -- FireSimulation
 -- Purpose: Fire drill flow, procedural fire behavior, and firefighter visibility control.
--- Dependencies: DialogService, NavigationUtils, ActuatorService, ScoringSystem, KioskConfig
+-- Dependencies: DialogService, NavigationUtils, ScoringSystem, KioskConfig
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local DialogService = require(script.Parent.DialogService)
 local NavigationUtils = require(script.Parent.NavigationUtils)
-local ActuatorService = require(script.Parent.ActuatorService)
 local ResultsSystem = require(script.Parent.ResultsSystem)
 local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
@@ -425,18 +424,20 @@ end
 -- Starts a fire simulation for a player at a location and difficulty.
 function FireSimulation.start(player, locationName, difficulty, services, state)
 	local params = {
-		[1] = { duration = 55, heaterDelay = 35 },
-		[2] = { duration = 70, heaterDelay = 25 },
-		[3] = { duration = 90, heaterDelay = 18 },
+		[1] = { duration = 55 },
+		[2] = { duration = 70 },
+		[3] = { duration = 90 },
 	}
 	local p = params[math.clamp(difficulty, 1, 3)]
 
 	local building = getBuildingModel(locationName)
 	if not building then
+		services.stopExternalSimulation(player)
 		DialogService.send(player, "Error", "No se pudo cargar la ubicacion del ejercicio.")
 		return
 	end
 	if not services.canStartSimulation("Fire", locationName) then
+		services.stopExternalSimulation(player)
 		DialogService.send(player, "Error", "Ya hay un simulacro de incendio activo en esta ubicacion.")
 		return
 	end
@@ -451,6 +452,7 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 		Logger.warn("System", string.format("Fire origin could not be determined for location %s", locationName))
 		services.setSimulationActive("Fire", locationName, false)
 		services.setPowerMode("NORMAL")
+		services.stopExternalSimulation(player)
 		DialogService.send(player, "Error", "No se pudo iniciar el simulacro. Intente nuevamente.")
 		return
 	end
@@ -459,6 +461,7 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 	if not teleported then
 		services.setSimulationActive("Fire", locationName, false)
 		services.setPowerMode("NORMAL")
+		services.stopExternalSimulation(player)
 		DialogService.send(player, "Error", "No se pudo ubicar al participante. Intente nuevamente.")
 		return
 	end
@@ -497,6 +500,7 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 			return
 		end
 		session.simulationEnded = true
+		services.stopExternalSimulation(player)
 		for _, part in ipairs(affectedParts) do
 			FireSimulation.extinguish(part)
 		end
@@ -640,12 +644,6 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 					end
 				end
 			end
-		end
-	end)
-
-	task.delay(p.heaterDelay, function()
-		if state.playerSimulationData[player.UserId] then
-			ActuatorService.fire(player, locationName .. "_Heater", true, p.duration)
 		end
 	end)
 

@@ -392,10 +392,12 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 
 	local building = getBuildingModel(locationName)
 	if not building then
+		services.stopExternalSimulation(player)
 		DialogService.send(player, "Error", "No se pudo cargar la ubicacion del ejercicio.")
 		return
 	end
 	if not services.canStartSimulation("Earthquake", locationName) then
+		services.stopExternalSimulation(player)
 		DialogService.send(player, "Error", "Ya hay un simulacro de sismo activo en esta ubicacion.")
 		return
 	end
@@ -438,6 +440,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 
 	services.playIntercomSound(services.EARTHQUAKE_ALARM_SOUND_ID)
 	DialogService.send(player, "Warning", "MOVIMIENTO SISMICO EN CURSO.")
+	services.startEarthquakeMotor(p.duration, difficulty)
 	task.wait(1)
 
 	pcall(function()
@@ -474,6 +477,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 			services.setPowerMode("NORMAL")
 			services.controllerHUDEvent:FireClient(player, "Hide")
 			services.HUDService.stopTicker(player)
+			services.stopExternalSimulation(player)
 			state.playerSimulationData[player.UserId] = nil
 			return
 		end
@@ -499,6 +503,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 				services.setPowerMode("NORMAL")
 				services.controllerHUDEvent:FireClient(player, "Hide")
 				services.HUDService.stopTicker(player)
+				services.stopExternalSimulation(player)
 				state.playerSimulationData[player.UserId] = nil
 				return
 			end
@@ -529,6 +534,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 					services.mainLobbySpawn
 				)
 				services.HUDService.stopTicker(player)
+				services.stopExternalSimulation(player)
 				state.playerSimulationData[player.UserId] = nil
 			end)
 		end)
