@@ -46,6 +46,7 @@ local STUCK_NUDGE_RADIUS          = 2.0
 local PATHFINDING_TIMEOUT         = 6
 local MAX_CONCURRENT_PATHS        = 4
 local PATHFINDING_SLOT_TIMEOUT    = 0.6
+local PATH_COMPUTE_TIMEOUT        = 2.5
 
 -- ─── Global door cache ────────────────────────────────────────────────────────
 
@@ -579,6 +580,29 @@ function NPCWaypointFollower.start(npcModel)
 			npcModel.Name, startPos.X, startPos.Y, startPos.Z, goal.X, goal.Y, goal.Z
 		))
 
+		local function computePathWithTimeout(fromPos, toPos, path)
+			local done = false
+			local ok = false
+			local err
+			task.spawn(function()
+				ok, err = pcall(function()
+					path:ComputeAsync(fromPos, toPos)
+				end)
+				done = true
+			end)
+
+			local waited = 0
+			while not done and waited < PATH_COMPUTE_TIMEOUT do
+				task.wait(0.05)
+				waited += 0.05
+			end
+
+			if not done then
+				return false, "timeout"
+			end
+			return ok, err
+		end
+
 		while tick() < deadline do
 			if humanoid.Health <= 0 or not npcModel.Parent then return false end
 
@@ -592,13 +616,26 @@ function NPCWaypointFollower.start(npcModel)
 					))
 					loggedWait = true
 				end
-				if canFallback and tick() - waitStart > PATHFINDING_SLOT_TIMEOUT then
-					return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-slot-timeout")
+				if tick() - waitStart > PATHFINDING_SLOT_TIMEOUT then
+					if canFallback then
+						return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-slot-timeout")
+					end
+					Logger.warn("NPC", string.format(
+						"%s: pathfinding slot timeout; strict mode stop",
+						npcModel.Name
+					))
+					return false
 				end
 				task.wait(0.05)
 			end
 
 			activePathComputes += 1
+			local released = false
+			local function releaseSlot()
+				if released then return end
+				released = true
+				activePathComputes = math.max(0, activePathComputes - 1)
+			end
 			local agentRadiusRaw = (rootPart.Size.X + rootPart.Size.Z) * 0.25
 			local agentRadius = math.clamp(agentRadiusRaw, 1.5, 2.5)
 			local agentHeightRaw = humanoid.HipHeight * 2 + 2
@@ -613,10 +650,19 @@ function NPCWaypointFollower.start(npcModel)
 					DoorPass = 1,
 				},
 			})
-			local ok, err = pcall(function()
-				path:ComputeAsync(rootPart.Position, goal)
-			end)
-			activePathComputes -= 1
+			local ok, err = computePathWithTimeout(rootPart.Position, goal, path)
+			releaseSlot()
+
+			if not ok and err == "timeout" then
+				Logger.debug("NPC", string.format(
+					"%s: pathfinding compute timed out; strict=%s",
+					npcModel.Name, tostring(not canFallback)
+				))
+				if canFallback then
+					return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-compute-timeout")
+				end
+				return false
+			end
 
 			if not ok or path.Status ~= Enum.PathStatus.Success then
 				Logger.debug("NPC", string.format(
