@@ -101,13 +101,16 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	if not shouldControlMovement() then
-		humanoid:Move(Vector3.zero, false)
 		return
 	end
 
 	local direction = currentDirection
 	if os.clock() - lastUpdateAt > staleSeconds then
 		direction = "idle"
+	end
+
+	if direction == "idle" then
+		return
 	end
 
 	humanoid:Move(directionToMoveVector(direction), false)
