@@ -39,6 +39,18 @@ local function endArmedGroupsByDeath(player, locationName, spawnedNPCs, services
 	services.stopExternalSimulation(player)
 	state.playerSimulationData[player.UserId] = nil
 	services.setPowerMode("NORMAL")
+	
+	-- Reset all doors after simulation ends
+	local resetDoorsFunction = ReplicatedStorage:FindFirstChild("ResetAllDoorsFunction")
+	if resetDoorsFunction and resetDoorsFunction:IsA("BindableFunction") then
+		local ok, err = pcall(function()
+			resetDoorsFunction:Invoke()
+		end)
+		if not ok then
+			Logger.warn("Door", "Failed to reset doors in ArmedGroupsSimulation cleanup: " .. tostring(err))
+		end
+	end
+	
 	services.setSimulationActive("ArmedGroups", locationName, false)
 
 	task.wait(1)
@@ -251,6 +263,18 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 						end
 					end
 					services.setPowerMode("NORMAL")
+					
+					-- Reset all doors after simulation ends
+					local resetDoorsFunction = ReplicatedStorage:FindFirstChild("ResetAllDoorsFunction")
+					if resetDoorsFunction and resetDoorsFunction:IsA("BindableFunction") then
+						local ok, err = pcall(function()
+							resetDoorsFunction:Invoke()
+						end)
+						if not ok then
+							Logger.warn("Door", "Failed to reset doors in ArmedGroupsSimulation cleanup: " .. tostring(err))
+						end
+					end
+					
 					services.controllerHUDEvent:FireClient(player, "Hide")
 					ResultsSystem.show(
 						player,

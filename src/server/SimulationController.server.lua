@@ -200,6 +200,17 @@ local function startSimulationNow(player, eventType, locationName, difficulty)
 		return
 	end
 
+	-- Reset all doors to closed state for simulation startup
+	local resetDoorsFunction = ReplicatedStorage:FindFirstChild("ResetAllDoorsFunction")
+	if resetDoorsFunction and resetDoorsFunction:IsA("BindableFunction") then
+		local ok, err = pcall(function()
+			resetDoorsFunction:Invoke()
+		end)
+		if not ok then
+			Logger.warn("Door", "Failed to reset doors: " .. tostring(err))
+		end
+	end
+
 	if eventType ~= "ExploreSimulation" then
 		stopIntercom()
 	end

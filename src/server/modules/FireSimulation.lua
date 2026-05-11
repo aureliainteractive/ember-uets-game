@@ -505,6 +505,18 @@ function FireSimulation.start(player, locationName, difficulty, services, state)
 			FireSimulation.extinguish(part)
 		end
 		FireSimulation.hideFirefighters()
+		
+		-- Reset all doors after simulation ends
+		local resetDoorsFunction = ReplicatedStorage:FindFirstChild("ResetAllDoorsFunction")
+		if resetDoorsFunction and resetDoorsFunction:IsA("BindableFunction") then
+			local ok, err = pcall(function()
+				resetDoorsFunction:Invoke()
+			end)
+			if not ok then
+				Logger.warn("Door", "Failed to reset doors in FireSimulation cleanup: " .. tostring(err))
+			end
+		end
+		
 		services.setSimulationActive("Fire", locationName, false)
 		services.setPowerMode("NORMAL")
 		services.HUDService.stopTicker(player)

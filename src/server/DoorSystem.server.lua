@@ -9,6 +9,25 @@ local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Lo
 
 local initializedDoors = {}
 
+local function closeDoor(doorModel)
+	if not doorModel or not doorModel:IsA("Model") then
+		return
+	end
+	
+	local forceCloseDoorEvent = doorModel:FindFirstChild("ForceCloseDoor")
+	if forceCloseDoorEvent and forceCloseDoorEvent:IsA("BindableEvent") then
+		forceCloseDoorEvent:Fire()
+	end
+end
+
+local function resetAllDoors()
+	for doorModel, _ in pairs(initializedDoors) do
+		if doorModel and doorModel.Parent then
+			closeDoor(doorModel)
+		end
+	end
+end
+
 local function resolveDoorType(model)
 	local declaredType = model:GetAttribute("DoorType")
 	local hasHinge = model:FindFirstChild("Hinge") ~= nil
@@ -76,3 +95,17 @@ workspace.DescendantAdded:Connect(function(descendant)
 		initDoorModel(descendant)
 	end
 end)
+
+-- Expose resetAllDoors function via ReplicatedStorage for external calls (e.g., SimulationController)
+local resetAllDoorsFunction = ReplicatedStorage:FindFirstChild("ResetAllDoorsFunction")
+if not resetAllDoorsFunction then
+	resetAllDoorsFunction = Instance.new("BindableFunction")
+	resetAllDoorsFunction.Name = "ResetAllDoorsFunction"
+	resetAllDoorsFunction.Parent = ReplicatedStorage
+end
+
+resetAllDoorsFunction.OnInvoke = function()
+	resetAllDoors()
+	Logger.info("Door", "All doors reset to closed state")
+	return true
+end

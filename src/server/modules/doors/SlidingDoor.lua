@@ -152,6 +152,32 @@ function SlidingDoor.init(doorModel)
 	bindHandleClickDetector(doorModel, "HandleInside", tryToggleDoor)
 	bindHandleClickDetector(doorModel, "HandleOutside", tryToggleDoor)
 
+	-- Create ForceCloseDoor event for external reset requests (e.g., simulation restart)
+	local forceCloseDoorEvent = doorModel:FindFirstChild("ForceCloseDoor")
+	if not forceCloseDoorEvent then
+		forceCloseDoorEvent = Instance.new("BindableEvent")
+		forceCloseDoorEvent.Name = "ForceCloseDoor"
+		forceCloseDoorEvent.Parent = doorModel
+	end
+
+	-- Handler to force door to closed state immediately
+	forceCloseDoorEvent.Event:Connect(function()
+		-- Cancel any ongoing cooldown or animation
+		onCooldown = false
+		
+		-- If currently animating, we need to complete it first
+		if isAnimating then
+			task.wait(slideTime + 0.1)
+		end
+		
+		-- Force close without animation
+		if isOpen then
+			door.CFrame = closedCFrame
+			isOpen = false
+			doorModel:SetAttribute("IsOpen", false)
+		end
+	end)
+
 	return true
 end
 

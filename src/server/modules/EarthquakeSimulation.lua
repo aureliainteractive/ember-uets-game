@@ -521,8 +521,18 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 				DialogService.send(player, "Info", "Permanezca en la zona hasta recibir nueva instruccion.")
 				task.wait(3)
 
-				EarthquakeSimulation.restoreEarthquakeDrops(originalStates)
-				services.setSimulationActive("Earthquake", locationName, false)
+				EarthquakeSimulation.restoreEarthquakeDrops(originalStates)			
+			-- Reset all doors after simulation ends
+			local resetDoorsFunction = ReplicatedStorage:FindFirstChild("ResetAllDoorsFunction")
+			if resetDoorsFunction and resetDoorsFunction:IsA("BindableFunction") then
+				local ok, err = pcall(function()
+					resetDoorsFunction:Invoke()
+				end)
+				if not ok then
+					Logger.warn("Door", "Failed to reset doors in EarthquakeSimulation cleanup: " .. tostring(err))
+				end
+			end
+							services.setSimulationActive("Earthquake", locationName, false)
 				services.setPowerMode("NORMAL")
 				services.controllerHUDEvent:FireClient(player, "Hide")
 				ResultsSystem.show(
