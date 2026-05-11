@@ -48,6 +48,19 @@ local function tweenAsyncMulti(obj, props, startValues, endValues, duration, eas
 	return tween
 end
 
+local function fadeBrightness(startValue, endValue, duration, easingStyle, easingDir)
+	easingStyle = easingStyle or Enum.EasingStyle.Sine
+	easingDir = easingDir or Enum.EasingDirection.InOut
+	local Lighting = game:GetService("Lighting")
+	local colorCorrection = Lighting:FindFirstChild("ColorCorrection")
+	if colorCorrection then
+		colorCorrection.Brightness = startValue
+		local tween = TweenService:Create(colorCorrection, TweenInfo.new(duration, easingStyle, easingDir), { Brightness = endValue })
+		tween:Play()
+		return tween
+	end
+end
+
 --------------------------------------------------------------
 -- ESPERAR JUEGO
 --------------------------------------------------------------
@@ -164,6 +177,9 @@ logo.ImageTransparency = 1
 subtitle.TextTransparency = 1
 setLoadingStatus("Preparando assets del juego")
 
+-- Fade brightness: 0 → -1 (oscurecer pantalla)
+fadeBrightness(0, -1, 0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+
 --------------------------------------------------------------
 -- SECUENCIA SINCRONIZADA
 --------------------------------------------------------------
@@ -199,5 +215,11 @@ tweenWait(
 	Enum.EasingStyle.Sine,
 	Enum.EasingDirection.In
 )
+
+-- Fade brightness: -1 → 0 (aclarar pantalla)
+fadeBrightness(-1, 0, 1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+if gui then
+	task.wait(1.5)
+end
 
 gui.Enabled = false

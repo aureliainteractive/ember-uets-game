@@ -12,6 +12,21 @@ local loadingReadyEvent = ReplicatedStorage:WaitForChild("SimulationLoadingReady
 local controllerHUDEvent = ReplicatedStorage:WaitForChild("ControllerUI_HUD")
 local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 
+-- Acceder a ColorCorrection existente
+local Lighting = game:GetService("Lighting")
+local colorCorrection = Lighting:FindFirstChild("ColorCorrection")
+
+local function fadeBrightness(startValue, endValue, duration, easingStyle, easingDir)
+	easingStyle = easingStyle or Enum.EasingStyle.Sine
+	easingDir = easingDir or Enum.EasingDirection.InOut
+	if colorCorrection then
+		colorCorrection.Brightness = startValue
+		local tween = TweenService:Create(colorCorrection, TweenInfo.new(duration, easingStyle, easingDir), { Brightness = endValue })
+		tween:Play()
+		return tween
+	end
+end
+
 local BackgroundFrame = loadingUI:WaitForChild("Background")
 local LoadingBar = loadingUI:WaitForChild("LoadingBar")
 local LoadingBarFill = LoadingBar:WaitForChild("FillBar")
@@ -152,11 +167,18 @@ local function hideLoading(immediate)
 	if immediate then
 		setHiddenImmediate()
 		loadingUI.Enabled = false
+		-- Fade brightness: -1 → 0 (aclarar pantalla, instantáneamente)
+		colorCorrection.Brightness = 0
 		return
 	end
 
 	LoadingNowLabel.Text = "Listo"
 	setLoadingProgress(END_SCALE_X, true)
+
+	-- Fade brightness: -1 → 0 (aclarar pantalla)
+	task.spawn(function()
+		fadeBrightness(-1, 0, 0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+	end)
 
 	for index = #UI_ITEMS, 1, -1 do
 		local ui = UI_ITEMS[index]
@@ -232,6 +254,11 @@ local function showLoading(payload)
 
 	setLoadingProgress(0.22, true)
 
+	-- Fade brightness: 0 → -1 (oscurecer pantalla)
+	task.spawn(function()
+		fadeBrightness(0, -1, 0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+	end)
+
 	task.spawn(function()
 		task.wait(0.6)
 		if token ~= transitionToken or not progressThreadActive then
@@ -295,8 +322,6 @@ local function showLoading(payload)
 		pcall(function()
 			loadingReadyEvent:FireServer(payload.mode, payload.location, payload.diff)
 		end)
-
-		hideLoading(false)
 	end)
 
 	task.delay(25, function()
