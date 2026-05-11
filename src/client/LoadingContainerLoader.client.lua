@@ -1,6 +1,8 @@
 local plyr = game.Players.LocalPlayer
 local TweenService = game:GetService("TweenService")
 local ContentProvider = game:GetService("ContentProvider")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
 
 -- UTILS ----------------------------------------------------
 
@@ -60,6 +62,18 @@ local function fadeBrightness(startValue, endValue, duration, easingStyle, easin
 		return tween
 	end
 end
+
+-- Estado compartido de precarga para que la intro espere al progreso real
+local preloadState = {
+	targets = {},
+	total = 1,
+	loaded = 0,
+	finished = false,
+	failedCount = 0,
+}
+
+local INTRO_PRELOAD_TIMEOUT = 60
+local PRELOAD_RETRY_PASSES = 1
 
 --------------------------------------------------------------
 -- ESPERAR JUEGO
@@ -131,41 +145,89 @@ end
 
 local function startRealLoadingStatus()
 	local targets = buildPreloadTargets()
-	local total = math.max(#targets, 1)
-	local loaded = 0
-	local finished = false
+	preloadState.targets = targets
+	preloadState.total = math.max(#targets, 1)
+	preloadState.loaded = 0
+	preloadState.finished = false
+	preloadState.failedCount = 0
+
+	local startedAt = tick()
+	Logger.info("UI", string.format("Intro preload started. targets=%d", #targets))
 
 	if #targets == 0 then
 		setLoadingStatus("No hay assets que precargar")
+		preloadState.finished = true
+		Logger.info("UI", "Intro preload skipped (no targets)")
 		return
 	end
 
-	setLoadingStatus(string.format("Analizando %d assets del juego", total))
+	setLoadingStatus(string.format("Analizando %d assets del juego", preloadState.total))
 
-	task.spawn(function()
-		pcall(function()
-			ContentProvider:PreloadAsync(targets, function(asset, status)
-				loaded += 1
+	local seen = {}
+	local failed = {}
+
+	local function runPreloadPass(passTargets, passName)
+		local ok, err = pcall(function()
+			ContentProvider:PreloadAsync(passTargets, function(asset, status)
+				if not seen[asset] then
+					seen[asset] = true
+					preloadState.loaded += 1
+				end
 				local category = typeof(asset) == "Instance" and getAssetCategory(asset) or "recursos del juego"
-				local percent = math.clamp(math.floor((loaded / total) * 100 + 0.5), 0, 100)
+				local percent = math.clamp(math.floor((preloadState.loaded / preloadState.total) * 100 + 0.5), 0, 100)
 				if status == Enum.AssetFetchStatus.Failure then
+					failed[asset] = true
 					loadingStatus.Text = string.format("Cargando: %s (%d%%, reintentando)", category, percent)
 				else
+					failed[asset] = nil
 					loadingStatus.Text = string.format("Cargando: %s (%d%%)", category, percent)
 				end
 			end)
 		end)
 
-		finished = true
-	end)
-
-	while not finished do
-		local percent = math.clamp(math.floor((loaded / total) * 100 + 0.5), 0, 100)
-		loadingStatus.Text = string.format("Cargando: recursos del juego (%d%%)", percent)
-		task.wait(0.1)
+		if not ok then
+			Logger.error("UI", string.format("Intro preload pass '%s' failed: %s", passName, tostring(err)))
+		end
 	end
 
-	loadingStatus.Text = "Cargando: contenido del juego listo"
+	task.spawn(function()
+		runPreloadPass(preloadState.targets, "initial")
+
+		for pass = 1, PRELOAD_RETRY_PASSES do
+			local retryTargets = {}
+			for asset, isFailed in pairs(failed) do
+				if isFailed then
+					retryTargets[#retryTargets + 1] = asset
+				end
+			end
+
+			if #retryTargets == 0 then
+				break
+			end
+
+			Logger.warn("UI", string.format("Intro preload retry pass %d with %d failed assets", pass, #retryTargets))
+			setLoadingStatus(string.format("Reintentando %d assets fallidos", #retryTargets))
+			runPreloadPass(retryTargets, "retry-" .. tostring(pass))
+		end
+
+		local remainingFailures = 0
+		for _, isFailed in pairs(failed) do
+			if isFailed then
+				remainingFailures += 1
+			end
+		end
+		preloadState.failedCount = remainingFailures
+		preloadState.finished = true
+
+		local elapsed = tick() - startedAt
+		if remainingFailures > 0 then
+			loadingStatus.Text = string.format("Cargando: listo con %d incidencias", remainingFailures)
+			Logger.warn("UI", string.format("Intro preload completed with failures=%d elapsed=%.2fs", remainingFailures, elapsed))
+		else
+			loadingStatus.Text = "Cargando: contenido del juego listo"
+			Logger.info("UI", string.format("Intro preload completed successfully in %.2fs", elapsed))
+		end
+	end)
 end
 
 --------------------------------------------------------------
@@ -190,18 +252,26 @@ local tIn1 = tweenAsync(logo, "ImageTransparency", 1, 0, 2.2, Enum.EasingStyle.B
 local tIn2 = tweenAsync(subtitle, "TextTransparency", 1, 0, 2.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 tIn2.Completed:Wait()
 
--- [2.200 - 3.200] Pausa
-task.wait(1)
+-- Esperar hasta que la precarga real termine (o timeout) antes de continuar la secuencia
+local startWait = tick()
+while not preloadState.finished and (tick() - startWait) < INTRO_PRELOAD_TIMEOUT do
+	-- mantener la intro visible; la tarea `startRealLoadingStatus` actualiza `loadingStatus`
+	task.wait(0.1)
+end
+
+-- Si se alcanzó timeout, informar y continuar con la secuencia para no dejar al jugador atascado
+if not preloadState.finished then
+	setLoadingStatus("Carga ralentizada, continuando...")
+	Logger.warn("UI", string.format("Intro preload timeout reached at %.2fs", INTRO_PRELOAD_TIMEOUT))
+end
 
 -- [3.200 - 4.700] Textos salen con Sine.In para suavidad
 local tOut1 = tweenAsync(logo, "ImageTransparency", 0, 1, 1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.In)
 local tOut2 = tweenAsync(subtitle, "TextTransparency", 0, 1, 1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.In)
 tOut2.Completed:Wait()
 
--- [4.700 - 8.200] Logos fade-in con Sine.Out (3.5 s)
+-- Logos fade-in y fade-out (timings conservados)
 tweenWait(logos, "GroupTransparency", 1, 0, 3.5, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-
--- [8.200 - 11.200] Logos fade-out con Sine.In (3 s)
 tweenWait(logos, "GroupTransparency", 0, 1, 3, Enum.EasingStyle.Sine, Enum.EasingDirection.In)
 
 -- [11.200 - 12.095] Fade a negro con Sine.In
