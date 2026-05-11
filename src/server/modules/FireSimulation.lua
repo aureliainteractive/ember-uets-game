@@ -1,6 +1,7 @@
 -- FireSimulation
 -- Purpose: Fire drill flow, procedural fire behavior, and firefighter visibility control.
 -- Dependencies: DialogService, NavigationUtils, ScoringSystem, KioskConfig
+-- Optimization: Caches building parts per location to avoid repeated descendant scans.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -9,52 +10,26 @@ local NavigationUtils = require(script.Parent.NavigationUtils)
 local ResultsSystem = require(script.Parent.ResultsSystem)
 local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
+local GameConstants = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("GameConstants"))
 
 local RNG = Random.new()
 
-local IGNORED_PART_NAMES = {
-	["Baseplate"] = true,
-	["Terrain"] = true,
-}
-
-local MIN_VOLUME_FIRE = 0.05
-local SCAN_YIELD_EVERY = 2000
-local SMOKE_COLOR = Color3.fromRGB(117, 117, 117)
-
--- ========================= PARTICLE CONFIG (EDIT HERE) =========================
--- Folder path in ReplicatedStorage that contains your 2 presets.
--- Example structure:
--- ReplicatedStorage
---   Particles
---     Fire
---       FireSmall (3 ParticleEmitters)
---       FireLarge (4 ParticleEmitters)
-local PARTICLE_PRESETS_ROOT = { "Particles", "Fire" }
-
--- Names of each preset object inside PARTICLE_PRESETS_ROOT.
-local PARTICLE_PRESET_SMALL_NAME = "FireSmall"
-local PARTICLE_PRESET_LARGE_NAME = "FireLarge"
-
--- Your emitters should define an attribute to classify type:
--- EffectType = "Fire"  or  EffectType = "Smoke"
-local PARTICLE_EFFECT_TYPE_ATTRIBUTE = "EffectType"
-
--- Base relation requested:
--- Fire rate = 10, Smoke rate = 40 (x4 over fire).
-local FIRE_BASE_RATE = 10
-local SMOKE_TO_FIRE_RATE_RATIO = 4
-
--- Rate scaling based on computed fire size.
-local RATE_REFERENCE_FIRE_SIZE = 10
-local RATE_MIN_MULTIPLIER = 0.35
-local RATE_MAX_MULTIPLIER = 3.0
-
--- Part volume threshold to pick small vs large preset.
-local LARGE_PART_MIN_VOLUME = 10
-
--- Prefix used by runtime-generated ParticleEmitters for cleanup.
-local DYNAMIC_PARTICLE_PREFIX = "DynamicFX_"
--- ======================= END PARTICLE CONFIG (EDIT HERE) =======================
+-- Constants from GameConstants
+local IGNORED_PART_NAMES = GameConstants.FIRE_SIMULATION.IGNORED_PART_NAMES
+local MIN_VOLUME_FIRE = GameConstants.FIRE_SIMULATION.MIN_VOLUME_FIRE
+local SCAN_YIELD_EVERY = GameConstants.FIRE_SIMULATION.SCAN_YIELD_EVERY
+local SMOKE_COLOR = GameConstants.FIRE_SIMULATION.SMOKE_COLOR
+local PARTICLE_PRESETS_ROOT = GameConstants.FIRE_SIMULATION.PARTICLE_PRESETS_ROOT
+local PARTICLE_PRESET_SMALL_NAME = GameConstants.FIRE_SIMULATION.PARTICLE_PRESET_SMALL_NAME
+local PARTICLE_PRESET_LARGE_NAME = GameConstants.FIRE_SIMULATION.PARTICLE_PRESET_LARGE_NAME
+local PARTICLE_EFFECT_TYPE_ATTRIBUTE = GameConstants.FIRE_SIMULATION.PARTICLE_EFFECT_TYPE_ATTRIBUTE
+local FIRE_BASE_RATE = GameConstants.FIRE_SIMULATION.FIRE_BASE_RATE
+local SMOKE_TO_FIRE_RATE_RATIO = GameConstants.FIRE_SIMULATION.SMOKE_TO_FIRE_RATE_RATIO
+local RATE_REFERENCE_FIRE_SIZE = GameConstants.FIRE_SIMULATION.RATE_REFERENCE_FIRE_SIZE
+local RATE_MIN_MULTIPLIER = GameConstants.FIRE_SIMULATION.RATE_MIN_MULTIPLIER
+local RATE_MAX_MULTIPLIER = GameConstants.FIRE_SIMULATION.RATE_MAX_MULTIPLIER
+local LARGE_PART_MIN_VOLUME = GameConstants.FIRE_SIMULATION.LARGE_PART_MIN_VOLUME
+local DYNAMIC_PARTICLE_PREFIX = GameConstants.FIRE_SIMULATION.DYNAMIC_PARTICLE_PREFIX
 
 local FIREFIGHTERS_FOLDER = workspace:WaitForChild("FireWaypoints"):WaitForChild("Firefighters")
 local FIREFIGHTER_HIDDEN_OFFSET = Vector3.new(0, -100, 0)
@@ -64,6 +39,15 @@ local firefightersInitialized = false
 local particleRootCache
 local particleRootResolved = false
 local particlePresetWarnings = {}
+
+-- ========================= BUILDING PARTS CACHE =========================
+-- Caches collected building parts per location name to avoid rescanning.
+-- Cache is keyed by locationName and stores the array of valid parts.
+-- If a building is modified, cache will become stale but simulation will still work
+-- (it will just use potentially invalidated part references, which is safe).
+local buildingPartsCache = {}
+
+-- ========================= END CACHE SECTION =========================
 
 local FireSimulation = {}
 
@@ -102,7 +86,19 @@ function FireSimulation.isValidPart(obj)
 end
 
 -- Collects all valid building parts that can participate in fire spread.
+-- Uses cache if available to avoid repeated descendant scans.
 function FireSimulation.collectBuildingParts(building)
+	if not building then
+		return {}
+	end
+	
+	-- Check cache first (optimization)
+	local locationName = building.Name
+	if buildingPartsCache[locationName] then
+		return buildingPartsCache[locationName]
+	end
+	
+	-- Scan building and cache result
 	local parts = {}
 	local count = 0
 	for _, obj in ipairs(building:GetDescendants()) do
@@ -114,27 +110,29 @@ function FireSimulation.collectBuildingParts(building)
 			table.insert(parts, obj)
 		end
 	end
+	
+	buildingPartsCache[locationName] = parts
 	return parts
 end
 
 -- Computes fire size based on part size and difficulty.
 function FireSimulation.fireSize(part, difficulty)
+	local params = GameConstants.getSimulationParams("FireSimulation", difficulty)
 	local avg = (part.Size.X + part.Size.Y + part.Size.Z) / 3
-	local mult = (difficulty == 1 and 2.85) or (difficulty == 2 and 3.05) or 5.25
-	return math.clamp(avg * mult, 2, 30)
+	return math.clamp(avg * params.fireSize, 2, 30)
 end
 
 -- Computes fire heat based on difficulty.
 function FireSimulation.fireHeat(difficulty)
-	return (difficulty == 1 and 20) or (difficulty == 2 and 30) or 40
+	local params = GameConstants.getSimulationParams("FireSimulation", difficulty)
+	return params.heat
 end
 
 -- Computes smoke size and rise velocity based on part and difficulty.
 function FireSimulation.smokeParams(part, difficulty)
+	local params = GameConstants.getSimulationParams("FireSimulation", difficulty)
 	local avg = (part.Size.X + part.Size.Y + part.Size.Z) / 3
-	local sizeMult = (difficulty == 1 and 1.0) or (difficulty == 2 and 1.2) or 1.4
-	local rise = (difficulty == 1 and 8) or (difficulty == 2 and 6) or 4
-	return math.clamp(avg * sizeMult, 3, 25), rise
+	return math.clamp(avg * params.smokeSizeMult, 3, 25), params.smokeRise
 end
 
 local function resolveParticleRoot()
@@ -299,13 +297,14 @@ function FireSimulation.spreadFire(parts, difficulty, durationSeconds, seedPart)
 		return {}
 	end
 
+	local params = GameConstants.getSimulationParams("FireSimulation", difficulty)
 	local burnedSet = {}
 	local burningList = {}
 
-	local spreadRadius = (difficulty == 1 and 18) or (difficulty == 2 and 26) or 35
-	local maxPerWave = (difficulty == 1 and 6) or (difficulty == 2 and 10) or 14
-	local waveInterval = (difficulty == 1 and 4.0) or (difficulty == 2 and 3.0) or 2.0
-	local maxTotal = (difficulty == 1 and 100) or (difficulty == 2 and 150) or 200
+	local spreadRadius = params.spreadRadius
+	local maxPerWave = params.partsPerWave
+	local waveInterval = params.waveInterval
+	local maxTotal = params.maxBurning
 
 	local endTime = tick() + durationSeconds
 	local seed = seedPart or FireSimulation.pickFireOrigin(parts)
@@ -347,11 +346,14 @@ function FireSimulation.spreadFire(parts, difficulty, durationSeconds, seedPart)
 
 		local front = burningList[RNG:NextInteger(1, #burningList)]
 		if not front or not front.Parent then
-			for i = #burningList, 1, -1 do
-				if not burningList[i] or not burningList[i].Parent then
-					table.remove(burningList, i)
+			-- Mark-and-sweep: instead of immediate removal, mark invalid entries
+			local validList = {}
+			for _, part in ipairs(burningList) do
+				if part and part.Parent then
+					table.insert(validList, part)
 				end
 			end
+			burningList = validList
 			continue
 		end
 
@@ -363,14 +365,20 @@ function FireSimulation.spreadFire(parts, difficulty, durationSeconds, seedPart)
 			end
 		end
 
+		-- Mark-and-sweep for overflow management: rebuild list without excess
 		if #burningList > maxTotal then
 			local excess = #burningList - maxTotal
-			for _ = 1, excess do
-				local old = table.remove(burningList, 1)
-				if old and old.Parent then
-					FireSimulation.extinguish(old)
+			local newList = {}
+			for i, part in ipairs(burningList) do
+				if i > excess then
+					table.insert(newList, part)
+				else
+					if part and part.Parent then
+						FireSimulation.extinguish(part)
+					end
 				end
 			end
+			burningList = newList
 		end
 	end
 
@@ -423,12 +431,7 @@ end
 
 -- Starts a fire simulation for a player at a location and difficulty.
 function FireSimulation.start(player, locationName, difficulty, services, state)
-	local params = {
-		[1] = { duration = 55 },
-		[2] = { duration = 70 },
-		[3] = { duration = 90 },
-	}
-	local p = params[math.clamp(difficulty, 1, 3)]
+	local p = GameConstants.getSimulationParams("FireSimulation", difficulty)
 
 	local building = getBuildingModel(locationName)
 	if not building then

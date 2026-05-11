@@ -2,12 +2,15 @@
 
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local GameConstants = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("GameConstants"))
 
 -- =========================
--- CONFIG
+-- CONFIG (from GameConstants)
 -- =========================
-local DAY_LENGTH_SECONDS = 30 -- un día completo (24h) dura esto en segundos
-local BLACKOUT_NIGHT_TIME = 0 -- hora forzada durante blackout (0 = medianoche)
+local DAY_LENGTH_SECONDS = GameConstants.DAY_CYCLE.DAY_LENGTH_SECONDS
+local BLACKOUT_NIGHT_TIME = GameConstants.DAY_CYCLE.BLACKOUT_NIGHT_TIME
 
 -- =========================
 -- INTERNAL
@@ -25,10 +28,10 @@ RunService.Heartbeat:Connect(function()
 	-- 🌑 BLACKOUT → noche forzada
 	if powerMode == "BLACKOUT" then
 		Lighting.ClockTime = BLACKOUT_NIGHT_TIME
-		Lighting.Atmosphere.Density = 0.6
+		Lighting.Atmosphere.Density = GameConstants.DAY_CYCLE.ATMOSPHERE_DENSITY_BLACKOUT
 		return
 	else
-		Lighting.Atmosphere.Density = 0
+		Lighting.Atmosphere.Density = GameConstants.DAY_CYCLE.ATMOSPHERE_DENSITY_NORMAL
 	end
 
 	-- 🕒 Ciclo normal

@@ -2,6 +2,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UIManager = require(ReplicatedStorage.Shared.UIManager)
+local GameConstants = require(ReplicatedStorage.Shared.GameConstants)
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -11,10 +12,6 @@ local HUDContainer = UIManager.get(playerGui, "HUD_VR")
 local ControllerUI_HUD = ReplicatedStorage:WaitForChild("ControllerUI_HUD")
 local HUDUpdate = ReplicatedStorage:WaitForChild("HUDUpdate")
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
-
-local CONFIG = {
-	AnimationDuration = 0.42,
-}
 
 -- Referencias UI
 local UI = {
@@ -73,10 +70,18 @@ local function resetHUDContent()
 	end
 end
 
--- Animaciones
-local TWEEN_IN = TweenInfo.new(CONFIG.AnimationDuration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-local TWEEN_OUT = TweenInfo.new(CONFIG.AnimationDuration - 0.08, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-local STAGGER_STEP = 0.045
+-- Animaciones (from GameConstants)
+local TWEEN_IN = TweenInfo.new(
+	GameConstants.ANIMATION.HUD_ANIMATION_DURATION,
+	GameConstants.ANIMATION.HUD_EASING_STYLE,
+	GameConstants.ANIMATION.HUD_EASING_DIRECTION_IN
+)
+local TWEEN_OUT = TweenInfo.new(
+	GameConstants.ANIMATION.HUD_ANIMATION_DURATION - 0.08,
+	GameConstants.ANIMATION.HUD_EASING_STYLE,
+	GameConstants.ANIMATION.HUD_EASING_DIRECTION_OUT
+)
+local STAGGER_STEP = GameConstants.ANIMATION.HUD_STAGGER_STEP
 
 local ANIMATION_ORDER = {
 	UI.simulationActive,

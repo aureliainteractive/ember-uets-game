@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UIManager = require(ReplicatedStorage.Shared.UIManager)
+local GameConstants = require(ReplicatedStorage.Shared.GameConstants)
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -18,20 +19,17 @@ local radioBeep = dialogContainer:WaitForChild("RadioBeep")
 local showDialogEvent = ReplicatedStorage:WaitForChild("ShowDialog")
 
 -- =============================================================================
--- CONFIG
+-- CONFIG (from GameConstants)
 -- =============================================================================
 
 local CONFIG = {
-
 	MaxQueueSize = 6,
 	MinDisplayTime = 2,
 	MaxDisplayTime = 7,
-
 	CharsPerSecond = 22,
-	TypeSpeed = 0.02,
-
-	PauseBetweenDialogs = 0.5,
-	AnimationDuration = 0.35,
+	TypeSpeed = GameConstants.ANIMATION.DIALOG_TYPE_SPEED,
+	PauseBetweenDialogs = GameConstants.ANIMATION.DIALOG_PAUSE_BETWEEN,
+	AnimationDuration = GameConstants.ANIMATION.DIALOG_FADE_IN_TIME,
 	DuplicateWindow = 2,
 }
 

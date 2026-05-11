@@ -1,6 +1,7 @@
 -- EarthquakeSimulation
 -- Purpose: Earthquake drill flow with object drops, refuge protocol, and aftershocks.
 -- Dependencies: DialogService, NavigationUtils, ScoringSystem
+-- Optimization: Caches building candidates per location to avoid repeated descendant scans.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -9,20 +10,26 @@ local NavigationUtils = require(script.Parent.NavigationUtils)
 local ResultsSystem = require(script.Parent.ResultsSystem)
 local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
+local GameConstants = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("GameConstants"))
 
 local RNG = Random.new()
 
-local MIN_VOLUME_QUAKE = 0.15
-local SCAN_YIELD_EVERY = 2000
-local MIN_STRUCTURAL_VOLUME = 1.2
-local MAX_STRUCTURAL_VOLUME = 220
-local MAX_PART_DIMENSION = 28
-local MAX_UNANCHOR_ASSEMBLY_MASS = 900
+-- Constants from GameConstants
+local MIN_VOLUME_QUAKE = GameConstants.EARTHQUAKE_SIMULATION.MIN_VOLUME_QUAKE
+local SCAN_YIELD_EVERY = GameConstants.EARTHQUAKE_SIMULATION.SCAN_YIELD_EVERY
+local MIN_STRUCTURAL_VOLUME = GameConstants.EARTHQUAKE_SIMULATION.MIN_STRUCTURAL_VOLUME
+local MAX_STRUCTURAL_VOLUME = GameConstants.EARTHQUAKE_SIMULATION.MAX_STRUCTURAL_VOLUME
+local MAX_PART_DIMENSION = GameConstants.EARTHQUAKE_SIMULATION.MAX_PART_DIMENSION
+local MAX_UNANCHOR_ASSEMBLY_MASS = GameConstants.EARTHQUAKE_SIMULATION.MAX_UNANCHOR_ASSEMBLY_MASS
+local PILLAR_COLOR = GameConstants.EARTHQUAKE_SIMULATION.PILLAR_COLOR
+local STUCCO_TILE_SIZE = GameConstants.EARTHQUAKE_SIMULATION.STUCCO_TILE_SIZE
+local TV_SIZE = GameConstants.EARTHQUAKE_SIMULATION.TV_SIZE
+local SIZE_EPSILON = GameConstants.EARTHQUAKE_SIMULATION.SIZE_EPSILON
 
-local PILLAR_COLOR = Color3.fromRGB(181, 125, 93)
-local STUCCO_TILE_SIZE = Vector3.new(3.288, 0.038, 3.288)
-local TV_SIZE = Vector3.new(10.17, 5.751, 0.052)
-local SIZE_EPSILON = 0.02
+-- ========================= EARTHQUAKE CANDIDATES CACHE =========================
+-- Caches collected earthquake candidates per location to avoid rescanning.
+local earthquakeCandidatesCache = {}
+-- ========================= END CACHE SECTION =========================
 
 local EarthquakeSimulation = {}
 
@@ -110,7 +117,24 @@ local function getBuildingModel(locationName)
 end
 
 -- Collects candidate earthquake objects from a building.
+-- Uses cache if available to avoid repeated descendant scans.
 function EarthquakeSimulation.collectEarthquakeCandidates(building)
+	if not building then
+		return {
+			tiles = {},
+			tvs = {},
+			pillars = {},
+			lightModels = {},
+			structural = {},
+		}
+	end
+	
+	-- Check cache first (optimization)
+	local locationName = building.Name
+	if earthquakeCandidatesCache[locationName] then
+		return earthquakeCandidatesCache[locationName]
+	end
+	
 	local tiles, tvs, pillars, lightModels, structural = {}, {}, {}, {}, {}
 	local excludedFromStructural = {}
 	local count = 0
@@ -141,13 +165,17 @@ function EarthquakeSimulation.collectEarthquakeCandidates(building)
 			table.insert(structural, obj)
 		end
 	end
-	return {
+	
+	local result = {
 		tiles = tiles,
 		tvs = tvs,
 		pillars = pillars,
 		lightModels = lightModels,
 		structural = structural,
 	}
+	
+	earthquakeCandidatesCache[locationName] = result
+	return result
 end
 
 -- Gets representative part from a model.
@@ -383,12 +411,7 @@ end
 
 -- Starts an earthquake simulation for a player at a location and difficulty.
 function EarthquakeSimulation.start(player, locationName, difficulty, services, state)
-	local params = {
-		[1] = { duration = 10, shakeScale = 3.0, prepTime = 6 },
-		[2] = { duration = 15, shakeScale = 5.0, prepTime = 5 },
-		[3] = { duration = 20, shakeScale = 7.0, prepTime = 4 },
-	}
-	local p = params[math.clamp(difficulty, 1, 3)]
+	local p = GameConstants.getSimulationParams("EarthquakeSimulation", difficulty)
 
 	local building = getBuildingModel(locationName)
 	if not building then
@@ -431,7 +454,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 	DialogService.send(player, "Warning", "ALERTA SISMICA — Se ha detectado actividad sismica en la zona.")
 	task.wait(2)
 	DialogService.send(player, "Info", "Mantenga la calma. Prepare para seguir el protocolo de sismo.")
-	task.wait(p.prepTime)
+	task.wait(p.preAlertTime)
 
 	local originalStates = {}
 	task.spawn(function()
@@ -446,7 +469,7 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 	pcall(function()
 		local ev = ReplicatedStorage:FindFirstChild("CameraShakeEvent")
 		if ev then
-			ev:FireClient(player, p.duration, p.shakeScale)
+			ev:FireClient(player, p.duration, p.scale)
 		end
 	end)
 

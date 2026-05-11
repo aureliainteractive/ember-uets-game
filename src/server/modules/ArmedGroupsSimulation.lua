@@ -9,6 +9,7 @@ local NavigationUtils = require(script.Parent.NavigationUtils)
 local ResultsSystem = require(script.Parent.ResultsSystem)
 local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
+local GameConstants = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("GameConstants"))
 
 local atacantNPC = ReplicatedStorage:WaitForChild("Atacant NPC")
 local AtacantsSpawns = workspace:WaitForChild("AtacantsSpawns")
@@ -60,8 +61,9 @@ end
 
 -- Starts an armed-groups simulation for a player at a location and difficulty.
 function ArmedGroupsSimulation.start(player, locationName, difficulty, services, state)
-	local npcCounts = { [1] = 2, [2] = 4, [3] = 6 }
-	local prepTimes = { [1] = 7, [2] = 5, [3] = 4 }
+	local p = GameConstants.getSimulationParams("ArmedGroupsSimulation", difficulty)
+	local npcCount = p.npcCount
+	local prepTime = p.preparationTime
 
 	if not services.canStartSimulation("ArmedGroups", locationName) then
 		services.stopExternalSimulation(player)
@@ -69,9 +71,6 @@ function ArmedGroupsSimulation.start(player, locationName, difficulty, services,
 		return
 	end
 	services.setSimulationActive("ArmedGroups", locationName, true)
-
-	local npcCount = npcCounts[math.clamp(difficulty, 1, 3)]
-	local prepTime = prepTimes[math.clamp(difficulty, 1, 3)]
 
 	local spawnFolder = AtacantsSpawns:FindFirstChild(locationName)
 	if not spawnFolder then
