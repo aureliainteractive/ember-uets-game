@@ -7,7 +7,11 @@ function UIManager.get(playerGui, name, timeout)
 
 	-- cache first
 	if cache[playerGui] and cache[playerGui][name] then
-		return cache[playerGui][name]
+		local cached = cache[playerGui][name]
+		if cached and cached.Parent and cached:IsDescendantOf(playerGui) then
+			return cached
+		end
+		cache[playerGui][name] = nil
 	end
 
 	local start = os.clock()
