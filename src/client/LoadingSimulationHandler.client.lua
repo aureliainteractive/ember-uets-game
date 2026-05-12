@@ -489,6 +489,38 @@ local function showLoading(payload)
 		end
 
 		fireReadyOnce("normal")
+
+		-- AUTO-HIDE: Detect when player is teleported (character position changes significantly)
+		-- and automatically hide loading screen
+		task.spawn(function()
+			if token ~= transitionToken or not isVisible then return end
+			
+			local character = player.Character
+			if not character then return end
+			
+			local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+			if not humanoidRootPart then return end
+			
+			local startPos = humanoidRootPart.Position
+			local maxWaitTime = 10 -- Wait up to 10s for teleport
+			local startTime = tick()
+			
+			-- Wait for significant position change or timeout
+			while token == transitionToken and isVisible and (tick() - startTime) < maxWaitTime do
+				local currentPos = humanoidRootPart.Position
+				local distance = (currentPos - startPos).Magnitude
+				
+				if distance > 50 then -- Teleported if moved more than 50 studs
+					Logger.info("UI", string.format("Player teleported (distance: %.1f studs), hiding loading screen", distance))
+					task.wait(0.3) -- Small delay for smooth transition
+					if token == transitionToken and isVisible then
+						hideLoading(false)
+					end
+					return
+				end
+				task.wait(0.1)
+			end
+		end)
 	end)
 
 	task.delay(LOADING_WATCHDOG_TIMEOUT, function()
@@ -501,6 +533,14 @@ local function showLoading(payload)
 			setLoadingProgress(END_SCALE_X, true)
 			progressThreadActive = false
 			fireReadyOnce("watchdog-timeout")
+		end
+	end)
+
+	-- Failsafe: Force hide loading after extended wait if teleport not detected
+	task.delay(15, function()
+		if token == transitionToken and isVisible then
+			Logger.warn("UI", "Teleport detection timeout, forcing loading screen hide")
+			hideLoading(false)
 		end
 	end)
 end

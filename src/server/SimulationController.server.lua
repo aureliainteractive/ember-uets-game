@@ -21,7 +21,18 @@ local hudUpdateEvent = ReplicatedStorage:WaitForChild("HUDUpdate")
 
 -- All RemoteEvents should be created in-place in Studio ReplicatedStorage
 -- to avoid replication race conditions
-local simulationLoadingReadyEvent = ReplicatedStorage:WaitForChild("SimulationLoadingReady")
+-- Wait up to 5 seconds for the event to exist (either from Studio or early replication)
+local simulationLoadingReadyEvent
+for _ = 1, 50 do
+	simulationLoadingReadyEvent = ReplicatedStorage:FindFirstChild("SimulationLoadingReady")
+	if simulationLoadingReadyEvent then break end
+	task.wait(0.1)
+end
+
+if not simulationLoadingReadyEvent then
+	Logger.error("System", "CRITICAL: SimulationLoadingReady RemoteEvent not found in ReplicatedStorage after 5s timeout")
+	error("SimulationLoadingReady RemoteEvent is required in ReplicatedStorage")
+end
 
 local spawnpointsFolder = workspace:WaitForChild("Spawnpoints")
 local mainLobbySpawn = spawnpointsFolder:WaitForChild("MainLobby")
@@ -203,10 +214,13 @@ end)
 local DIFFICULTY_MAP = { Easy = 1, Medium = 2, Hard = 3 }
 
 local function startSimulationNow(player, eventType, locationName, difficulty)
+	Logger.info("System", string.format("startSimulationNow() called for %s | %s | %s", player.Name, eventType, locationName))
 	if not player or not player.Parent then
 		Logger.warn("System", "Start request skipped due to invalid player")
 		return
 	end
+
+	Logger.info("System", string.format("Player %s is valid, proceeding with simulation setup", player.Name))
 
 	-- Reset all doors to closed state for simulation startup
 	local resetDoorsFunction = ReplicatedStorage:FindFirstChild("ResetAllDoorsFunction")
@@ -258,13 +272,18 @@ local function startSimulationNow(player, eventType, locationName, difficulty)
 	}
 
 	local ok, err = pcall(function()
+		Logger.info("System", string.format("Executing simulation type: %s", eventType))
 		if eventType == "FireSimulation" then
+			Logger.info("System", "Starting FireSimulation")
 			FireSimulation.start(player, locationName, difficulty, services, state)
 		elseif eventType == "EarthquakeSimulation" then
+			Logger.info("System", "Starting EarthquakeSimulation")
 			EarthquakeSimulation.start(player, locationName, difficulty, services, state)
 		elseif eventType == "ArmedGroupsSimulation" then
+			Logger.info("System", "Starting ArmedGroupsSimulation")
 			ArmedGroupsSimulation.start(player, locationName, difficulty, services, state)
 		elseif eventType == "ExploreSimulation" then
+			Logger.info("System", "Starting ExploreSimulation")
 			startExploreSimulation(player, locationName, difficulty)
 		else
 			DialogService.send(player, "Error", "Tipo de simulacro no reconocido: " .. tostring(eventType))

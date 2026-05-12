@@ -72,7 +72,7 @@ local preloadState = {
 	failedCount = 0,
 }
 
-local INTRO_PRELOAD_TIMEOUT = 60
+local INTRO_PRELOAD_TIMEOUT = 10
 local PRELOAD_RETRY_PASSES = 1
 
 --------------------------------------------------------------
