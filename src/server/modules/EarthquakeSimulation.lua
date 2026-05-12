@@ -412,10 +412,38 @@ end
 
 -- Starts an earthquake simulation for a player at a location and difficulty.
 function EarthquakeSimulation.start(player, locationName, difficulty, services, state)
+	-- === Validate input parameters ===
+	if not player or not player.Parent then
+		Logger.warn("System", "EarthquakeSimulation.start: Invalid player")
+		return
+	end
+	if not locationName or locationName == "" then
+		Logger.warn("System", "EarthquakeSimulation.start: Empty location name")
+		DialogService.send(player, "Error", "Ubicación no especificada.")
+		return
+	end
+	if not services then
+		Logger.warn("System", "EarthquakeSimulation.start: Missing services")
+		DialogService.send(player, "Error", "Servicios no disponibles.")
+		return
+	end
+	if not state then
+		Logger.warn("System", "EarthquakeSimulation.start: Missing simulation state")
+		DialogService.send(player, "Error", "Estado del simulacro no válido.")
+		return
+	end
+
 	local p = GameConstants.getSimulationParams("EarthquakeSimulation", difficulty)
+	if not p then
+		Logger.warn("System", "EarthquakeSimulation.start: Could not load parameters for difficulty " .. tostring(difficulty))
+		DialogService.send(player, "Error", "Parámetros de dificultad no válidos.")
+		services.stopExternalSimulation(player)
+		return
+	end
 
 	local building = getBuildingModel(locationName)
 	if not building then
+		Logger.warn("System", "EarthquakeSimulation.start: Building model not found - " .. locationName)
 		services.stopExternalSimulation(player)
 		DialogService.send(player, "Error", "No se pudo cargar la ubicacion del ejercicio.")
 		return

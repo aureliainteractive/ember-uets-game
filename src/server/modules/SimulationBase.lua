@@ -140,10 +140,8 @@ function SimulationBase:activateSimulation(player, locationName, difficulty, ser
 			session.simulationEnded = true
 		end
 	end
-	player.CharacterRemoving:Connect(onCharacterRemoved)
-	table.insert(session.connections, function()
-		-- Cleanup connection (though player.CharacterRemoving auto-disconnects on player leave)
-	end)
+	local characterRemovedConn = player.CharacterRemoving:Connect(onCharacterRemoved)
+	table.insert(session.connections, characterRemovedConn)
 
 	-- === HUD TICKER ===
 	services.HUDService.startTicker(player, session, services)
@@ -158,22 +156,29 @@ function SimulationBase:activateSimulation(player, locationName, difficulty, ser
 
 	-- === CLEANUP ON END ===
 	local function cleanup()
-		services.setSimulationActive(simType, locationName, false)
-		services.setPowerMode("NORMAL")
-		services.HUDService.stopTicker(player)
-		services.controllerHUDEvent:FireClient(player, "Hide")
+		if not session or session.simulationEnded then
+			return  -- Already cleaned up
+		end
+		session.simulationEnded = true
+
+		if services and services.setSimulationActive then services.setSimulationActive(simType, locationName, false) end
+		if services and services.setPowerMode then services.setPowerMode("NORMAL") end
+		if services and services.HUDService and services.HUDService.stopTicker then services.HUDService.stopTicker(player) end
+		if services and services.controllerHUDEvent then
+			pcall(function() services.controllerHUDEvent:FireClient(player, "Hide") end)
+		end
 		
 		-- Disconnect all session connections
-		for _, conn in ipairs(session.connections or {}) do
-			if type(conn) == "function" then
-				conn()
-			elseif conn and conn.Disconnect then
-				conn:Disconnect()
+		if session.connections then
+			for _, conn in ipairs(session.connections) do
+				if conn and type(conn.Disconnect) == "function" then
+					pcall(function() conn:Disconnect() end)
+				end
 			end
 		end
 
 		state.playerSimulationData[player.UserId] = nil
-		Logger.info("System", simType .. " ended for " .. player.Name)
+		Logger.info("System", simType .. " cleanup completed for " .. (player.Name or "unknown"))
 	end
 
 	-- Store cleanup function in session for external access

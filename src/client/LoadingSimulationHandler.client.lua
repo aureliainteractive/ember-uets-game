@@ -19,14 +19,21 @@ local Lighting = game:GetService("Lighting")
 local colorCorrection = Lighting:FindFirstChild("ColorCorrection")
 
 local function fadeBrightness(startValue, endValue, duration, easingStyle, easingDir)
+	if not colorCorrection then
+		Logger.warn("UI", "fadeBrightness: ColorCorrection not available")
+		return nil
+	end
+	if not startValue or not endValue or not duration then
+		Logger.warn("UI", "fadeBrightness: Invalid parameters (missing values)")
+		return nil
+	end
+	
 	easingStyle = easingStyle or Enum.EasingStyle.Sine
 	easingDir = easingDir or Enum.EasingDirection.InOut
-	if colorCorrection then
-		colorCorrection.Brightness = startValue
-		local tween = TweenService:Create(colorCorrection, TweenInfo.new(duration, easingStyle, easingDir), { Brightness = endValue })
-		tween:Play()
-		return tween
-	end
+	colorCorrection.Brightness = startValue
+	local tween = TweenService:Create(colorCorrection, TweenInfo.new(duration, easingStyle, easingDir), { Brightness = endValue })
+	tween:Play()
+	return tween
 end
 
 local function getAssetCategory(instance)

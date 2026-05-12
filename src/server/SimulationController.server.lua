@@ -93,8 +93,25 @@ local function stopIntercom()
 end
 
 local function startExploreSimulation(player, locationName, _difficulty)
+	-- === Validate input parameters ===
+	if not player or not player.Parent then
+		Logger.warn("System", "startExploreSimulation: Invalid player")
+		return
+	end
+	if not locationName or locationName == "" then
+		Logger.warn("System", "startExploreSimulation: Empty location name")
+		return
+	end
+
 	setSimulationActive("Explore", locationName, true)
-	NavigationUtils.teleportToSpawn(player, "FireSimulation", locationName)
+	
+	local teleported = NavigationUtils.teleportToSpawn(player, "FireSimulation", locationName)
+	if not teleported then
+		Logger.warn("System", "startExploreSimulation: Failed to teleport player to " .. locationName)
+		setSimulationActive("Explore", locationName, false)
+		return
+	end
+
 	controllerHUDEvent:FireClient(player, "Show")
 	if audioPlayer then
 		audioPlayer:Stop()

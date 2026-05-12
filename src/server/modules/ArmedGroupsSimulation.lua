@@ -63,12 +63,41 @@ end
 
 -- Starts an armed-groups simulation for a player at a location and difficulty.
 function ArmedGroupsSimulation.start(player, locationName, difficulty, services, state)
+	-- === Validate input parameters ===
+	if not player or not player.Parent then
+		Logger.warn("System", "ArmedGroupsSimulation.start: Invalid player")
+		return
+	end
+	if not locationName or locationName == "" then
+		Logger.warn("System", "ArmedGroupsSimulation.start: Empty location name")
+		DialogService.send(player, "Error", "Ubicación no especificada.")
+		return
+	end
+	if not services then
+		Logger.warn("System", "ArmedGroupsSimulation.start: Missing services")
+		DialogService.send(player, "Error", "Servicios no disponibles.")
+		return
+	end
+	if not state then
+		Logger.warn("System", "ArmedGroupsSimulation.start: Missing simulation state")
+		DialogService.send(player, "Error", "Estado del simulacro no válido.")
+		return
+	end
+
 	local p = GameConstants.getSimulationParams("ArmedGroupsSimulation", difficulty)
+	if not p then
+		Logger.warn("System", "ArmedGroupsSimulation.start: Could not load parameters for difficulty " .. tostring(difficulty))
+		DialogService.send(player, "Error", "Parámetros de dificultad no válidos.")
+		services.stopExternalSimulation(player)
+		return
+	end
+
 	local npcCount = p.npcCount
 	local prepTime = p.preparationTime
 
 	local spawnFolder = AtacantsSpawns:FindFirstChild(locationName)
 	if not spawnFolder then
+		Logger.warn("System", "ArmedGroupsSimulation.start: Spawn folder not found - " .. locationName)
 		DialogService.send(player, "Error", "No se pudo cargar la ubicacion del ejercicio.")
 		services.stopExternalSimulation(player)
 		return
