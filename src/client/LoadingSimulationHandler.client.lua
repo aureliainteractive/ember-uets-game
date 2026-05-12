@@ -285,13 +285,19 @@ local function showLoading(payload)
 			return
 		end
 		readySent = true
+		-- Retry finding the event if it wasn't available initially (wait for replication)
+		if not loadingReadyEvent then
+			task.wait(0.2)
+			loadingReadyEvent = ReplicatedStorage:FindFirstChild("SimulationLoadingReady")
+		end
+
 		-- Only fire server event if available
 		if loadingReadyEvent and type(loadingReadyEvent.FireServer) == "function" then
 			pcall(function()
 				loadingReadyEvent:FireServer(payload.mode, payload.location, payload.diff)
 			end)
 		else
-			Logger.warn("Network", "SimulationLoadingReady RemoteEvent missing; ready signal not sent to server")
+			Logger.warn("Network", "SimulationLoadingReady RemoteEvent missing after retry; ready signal not sent to server")
 		end
 		Logger.info(
 			"Network",
