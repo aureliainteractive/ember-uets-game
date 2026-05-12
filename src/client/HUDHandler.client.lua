@@ -191,36 +191,48 @@ ControllerUI_HUD.OnClientEvent:Connect(function(action)
 	end
 end)
 
-HUDUpdate.OnClientEvent:Connect(function(timeLeft, score, completedSteps, stepNames)
+HUDUpdate.OnClientEvent:Connect(function(changes)
 	if not isHUDVisible then
 		return
 	end
 
-	local mins = math.floor(timeLeft / 60)
-	local secs = timeLeft % 60
-	Labels.timeLeft.Text = string.format("%02d:%02d", mins, secs)
+	-- Changes is a delta table: {timeLeft = X, score = Y, completedSteps = Z, stepNames = {...}}
+	-- Only fields that changed are present, so we only update those
+	
+	if changes.timeLeft ~= nil then
+		local mins = math.floor(changes.timeLeft / 60)
+		local secs = changes.timeLeft % 60
+		Labels.timeLeft.Text = string.format("%02d:%02d", mins, secs)
+	end
 
-	Labels.score.Text = tostring(score)
+	if changes.score ~= nil then
+		Labels.score.Text = tostring(changes.score)
+	end
 
-	for i, obj in ipairs(Objectives) do
-		local name = stepNames and stepNames[i]
-		local label = ObjectiveLabels[i]
-		if name then
-			obj.Visible = true
-			if label then
-				label.Text = tostring(name)
-			end
-			if i <= completedSteps then
-				obj.Icon.Image = IMG_COMPLETE
-			elseif i == completedSteps + 1 then
-				obj.Icon.Image = IMG_IN_PROGRESS
+	if changes.completedSteps ~= nil or changes.stepNames ~= nil then
+		local completedSteps = changes.completedSteps or 0
+		local stepNames = changes.stepNames or {}
+		
+		for i, obj in ipairs(Objectives) do
+			local name = stepNames and stepNames[i]
+			local label = ObjectiveLabels[i]
+			if name then
+				obj.Visible = true
+				if label then
+					label.Text = tostring(name)
+				end
+				if i <= completedSteps then
+					obj.Icon.Image = IMG_COMPLETE
+				elseif i == completedSteps + 1 then
+					obj.Icon.Image = IMG_IN_PROGRESS
+				else
+					obj.Icon.Image = IMG_INCOMPLETE
+				end
 			else
-				obj.Icon.Image = IMG_INCOMPLETE
-			end
-		else
-			obj.Visible = false
-			if label then
-				label.Text = ""
+				obj.Visible = false
+				if label then
+					label.Text = ""
+				end
 			end
 		end
 	end
