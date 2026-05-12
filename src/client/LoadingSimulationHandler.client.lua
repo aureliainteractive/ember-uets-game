@@ -285,9 +285,14 @@ local function showLoading(payload)
 			return
 		end
 		readySent = true
-		pcall(function()
-			loadingReadyEvent:FireServer(payload.mode, payload.location, payload.diff)
-		end)
+		-- Only fire server event if available
+		if loadingReadyEvent and type(loadingReadyEvent.FireServer) == "function" then
+			pcall(function()
+				loadingReadyEvent:FireServer(payload.mode, payload.location, payload.diff)
+			end)
+		else
+			Logger.warn("Network", "SimulationLoadingReady RemoteEvent missing; ready signal not sent to server")
+		end
 		Logger.info(
 			"Network",
 			string.format(
@@ -433,13 +438,30 @@ local function showLoading(payload)
 		end
 
 		local failureCount = 0
-		for _, isFailed in pairs(failed) do
+		local failedList = {}
+		for asset, isFailed in pairs(failed) do
 			if isFailed then
 				failureCount += 1
+				local id
+				if typeof(asset) == "Instance" then
+					pcall(function()
+						id = asset:GetFullName()
+					end)
+					id = id or asset.Name or tostring(asset)
+				else
+					id = tostring(asset)
+				end
+				failedList[#failedList+1] = id
 			end
 		end
 		if failureCount > 0 then
 			Logger.warn("UI", string.format("Simulation preload finished with failures=%d", failureCount))
+			-- Log failed asset identifiers (truncate if too long)
+			local dump = table.concat(failedList, ", ")
+			if #dump > 2000 then
+				dump = string.sub(dump, 1, 2000) .. "... (truncated)"
+			end
+			Logger.warn("UI", "Failed assets: " .. dump)
 		else
 			Logger.debug("UI", "Simulation preload finished with no failures")
 		end
