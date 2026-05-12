@@ -285,11 +285,6 @@ local function showLoading(payload)
 			return
 		end
 		readySent = true
-		-- Retry finding the event if it wasn't available initially (wait for replication)
-		if not loadingReadyEvent then
-			task.wait(0.2)
-			loadingReadyEvent = ReplicatedStorage:FindFirstChild("SimulationLoadingReady")
-		end
 
 		-- Only fire server event if available
 		if loadingReadyEvent and type(loadingReadyEvent.FireServer) == "function" then
@@ -297,7 +292,7 @@ local function showLoading(payload)
 				loadingReadyEvent:FireServer(payload.mode, payload.location, payload.diff)
 			end)
 		else
-			Logger.warn("Network", "SimulationLoadingReady RemoteEvent missing after retry; ready signal not sent to server")
+			Logger.warn("Network", "SimulationLoadingReady RemoteEvent missing; ready signal not sent to server")
 		end
 		Logger.info(
 			"Network",
@@ -490,37 +485,12 @@ local function showLoading(payload)
 
 		fireReadyOnce("normal")
 
-		-- AUTO-HIDE: Detect when player is teleported (character position changes significantly)
-		-- and automatically hide loading screen
-		task.spawn(function()
-			if token ~= transitionToken or not isVisible then return end
-			
-			local character = player.Character
-			if not character then return end
-			
-			local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-			if not humanoidRootPart then return end
-			
-			local startPos = humanoidRootPart.Position
-			local maxWaitTime = 10 -- Wait up to 10s for teleport
-			local startTime = tick()
-			
-			-- Wait for significant position change or timeout
-			while token == transitionToken and isVisible and (tick() - startTime) < maxWaitTime do
-				local currentPos = humanoidRootPart.Position
-				local distance = (currentPos - startPos).Magnitude
-				
-				if distance > 50 then -- Teleported if moved more than 50 studs
-					Logger.info("UI", string.format("Player teleported (distance: %.1f studs), hiding loading screen", distance))
-					task.wait(0.3) -- Small delay for smooth transition
-					if token == transitionToken and isVisible then
-						hideLoading(false)
-					end
-					return
-				end
-				task.wait(0.1)
-			end
-		end)
+		-- Simple: Wait for server teleport to complete, then hide loading screen
+		-- No remote events, no complicated detection - just a reasonable wait time
+		task.wait(2.5)
+		if token == transitionToken and isVisible then
+			hideLoading(false)
+		end
 	end)
 
 	task.delay(LOADING_WATCHDOG_TIMEOUT, function()
@@ -533,14 +503,6 @@ local function showLoading(payload)
 			setLoadingProgress(END_SCALE_X, true)
 			progressThreadActive = false
 			fireReadyOnce("watchdog-timeout")
-		end
-	end)
-
-	-- Failsafe: Force hide loading after extended wait if teleport not detected
-	task.delay(15, function()
-		if token == transitionToken and isVisible then
-			Logger.warn("UI", "Teleport detection timeout, forcing loading screen hide")
-			hideLoading(false)
 		end
 	end)
 end
