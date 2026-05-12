@@ -9,6 +9,11 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local HUDContainer = UIManager.get(playerGui, "HUD_VR")
+if not HUDContainer then
+	Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
+	Logger.warn("UI", "HUDHandler: HUD_VR not found in PlayerGui; aborting HUD initialization")
+	return
+end
 
 local ControllerUI_HUD = ReplicatedStorage:WaitForChild("ControllerUI_HUD")
 local HUDUpdate = ReplicatedStorage:WaitForChild("HUDUpdate")

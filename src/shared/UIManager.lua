@@ -4,6 +4,11 @@ local cache = {}
 
 function UIManager.get(playerGui, name, timeout)
 	timeout = timeout or 10
+	-- defensive: check parent
+	if not playerGui then
+		warn("[UIManager] get() called with nil parent for UI: " .. tostring(name))
+		return nil
+	end
 
 	-- cache first
 	if cache[playerGui] and cache[playerGui][name] then
@@ -13,13 +18,11 @@ function UIManager.get(playerGui, name, timeout)
 	local start = os.clock()
 	local ui
 
+	-- Poll for child with a timeout instead of blocking indefinitely
 	repeat
 		ui = playerGui:FindFirstChild(name)
-
-		if not ui then
-			playerGui.ChildAdded:Wait()
-		end
-
+		if ui then break end
+		task.wait(0.08)
 	until ui or (os.clock() - start) > timeout
 
 	if not ui then

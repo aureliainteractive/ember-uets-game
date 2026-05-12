@@ -36,6 +36,11 @@ local confirmEvent = ReplicatedStorage:WaitForChild("KioskConfirm")
 -- ── UI REFERENCES ──────────────────────────────────────────────────
 
 local Screen = UIManager.get(playerGui, "ConfirmationUI") -- ScreenGui
+if not Screen then
+	Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
+	Logger.warn("UI", "ConfirmationUIHandler: ConfirmationUI not found in PlayerGui; aborting initialization")
+	return
+end
 local Panel = UIManager.get(Screen, "Panel") -- ImageLabel (animated)
 local Controles = UIManager.get(Screen, "Controles") -- ImageLabel (animated)
 local Objectives = UIManager.get(Panel, "Objectives") -- Frame (UIGridLayout)

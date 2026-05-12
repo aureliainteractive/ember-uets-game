@@ -84,14 +84,37 @@ end
 task.wait(0.5)
 
 --------------------------------------------------------------
--- REFERENCIAS
+-- REFERENCIAS (con timeout seguro)
 --------------------------------------------------------------
-local gui = plyr.PlayerGui:WaitForChild("LoadingContainer")
-local logos = gui:WaitForChild("SecondScreen")
-local blk = gui:WaitForChild("BLK")
-local logo = blk:WaitForChild("aureliaLogo")
-local subtitle = blk:WaitForChild("subtitle")
-local loadingStatus = logos:WaitForChild("LoadingStatus")
+local function waitForChildWithTimeout(parent, childName, timeout)
+	timeout = timeout or 8
+	if not parent then
+		Logger.warn("UI", "waitForChildWithTimeout: parent is nil for " .. tostring(childName))
+		return nil
+	end
+	local start = os.clock()
+	local found
+	repeat
+		found = parent:FindFirstChild(childName)
+		if found then break end
+		task.wait(0.08)
+	until (os.clock() - start) > timeout
+	if not found then
+		Logger.warn("UI", string.format("waitForChildWithTimeout: timed out looking for %s in %s", childName, tostring(parent.Name)))
+	end
+	return found
+end
+
+local gui = waitForChildWithTimeout(plyr.PlayerGui, "LoadingContainer", 12)
+if not gui then
+	Logger.warn("UI", "LoadingContainerLoader: LoadingContainer missing; skipping intro preload")
+	return
+end
+local logos = waitForChildWithTimeout(gui, "SecondScreen", 6)
+local blk = waitForChildWithTimeout(gui, "BLK", 6)
+local logo = blk and waitForChildWithTimeout(blk, "aureliaLogo", 4)
+local subtitle = blk and waitForChildWithTimeout(blk, "subtitle", 4)
+local loadingStatus = logos and waitForChildWithTimeout(logos, "LoadingStatus", 4)
 
 local gameVersion = game.PlaceVersion
 

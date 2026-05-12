@@ -21,6 +21,11 @@ local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Lo
 -- ============================================================
 
 local Screen = UIManager.get(playerGui, "ResultsScreen") -- ScreenGui
+if not Screen then
+	Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
+	Logger.warn("UI", "ResultsScreenHandler: ResultsScreen not found in PlayerGui; aborting initialization")
+	return
+end
 local Container = UIManager.get(Screen, "Container") -- Main Frame
 
 -- Header

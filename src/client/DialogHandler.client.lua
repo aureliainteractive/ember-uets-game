@@ -11,6 +11,11 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local HUD = UIManager.get(playerGui, "HUD_VR")
+if not HUD then
+	Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
+	Logger.warn("UI", "DialogHandler: HUD_VR not found in PlayerGui; aborting dialog initialization")
+	return
+end
 
 local dialogContainer = HUD:WaitForChild("SistemaEmberInfo")
 local textLabel = dialogContainer:WaitForChild("LabelTexto")

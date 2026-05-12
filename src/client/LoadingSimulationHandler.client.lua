@@ -8,10 +8,23 @@ local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Lo
 local player = Players.LocalPlayer
 
 local loadingUI = UIManager.get(player:WaitForChild("PlayerGui"), "LoadingUI")
+if not loadingUI then
+	Logger.warn("UI", "LoadingSimulationHandler: LoadingUI not found; skipping loading screen logic")
+	return
+end
 
-local loadingEvent = ReplicatedStorage:WaitForChild("SimulationLoadingEvent")
-local loadingReadyEvent = ReplicatedStorage:WaitForChild("SimulationLoadingReady")
-local controllerHUDEvent = ReplicatedStorage:WaitForChild("ControllerUI_HUD")
+local loadingEvent = ReplicatedStorage:FindFirstChild("SimulationLoadingEvent")
+if not loadingEvent then
+	Logger.warn("UI", "LoadingSimulationHandler: SimulationLoadingEvent missing in ReplicatedStorage")
+end
+local loadingReadyEvent = ReplicatedStorage:FindFirstChild("SimulationLoadingReady")
+if not loadingReadyEvent then
+	Logger.warn("UI", "LoadingSimulationHandler: SimulationLoadingReady missing in ReplicatedStorage")
+end
+local controllerHUDEvent = ReplicatedStorage:FindFirstChild("ControllerUI_HUD")
+if not controllerHUDEvent then
+	Logger.warn("UI", "LoadingSimulationHandler: ControllerUI_HUD missing in ReplicatedStorage")
+end
 local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 
 -- Acceder a ColorCorrection existente
