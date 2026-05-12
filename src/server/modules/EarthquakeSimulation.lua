@@ -1,36 +1,28 @@
 -- EarthquakeSimulation
 -- Purpose: Earthquake drill flow with object drops, refuge protocol, and aftershocks.
 -- Dependencies: DialogService, NavigationUtils, ScoringSystem
--- Optimization: Caches building candidates per location to avoid repeated descendant scans.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local DialogService = require(script.Parent.DialogService)
 local NavigationUtils = require(script.Parent.NavigationUtils)
 local ResultsSystem = require(script.Parent.ResultsSystem)
-local SimulationBase = require(script.Parent.SimulationBase)
 local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
-local GameConstants = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("GameConstants"))
 
 local RNG = Random.new()
 
--- Constants from GameConstants
-local MIN_VOLUME_QUAKE = GameConstants.EARTHQUAKE_SIMULATION.MIN_VOLUME_QUAKE
-local SCAN_YIELD_EVERY = GameConstants.EARTHQUAKE_SIMULATION.SCAN_YIELD_EVERY
-local MIN_STRUCTURAL_VOLUME = GameConstants.EARTHQUAKE_SIMULATION.MIN_STRUCTURAL_VOLUME
-local MAX_STRUCTURAL_VOLUME = GameConstants.EARTHQUAKE_SIMULATION.MAX_STRUCTURAL_VOLUME
-local MAX_PART_DIMENSION = GameConstants.EARTHQUAKE_SIMULATION.MAX_PART_DIMENSION
-local MAX_UNANCHOR_ASSEMBLY_MASS = GameConstants.EARTHQUAKE_SIMULATION.MAX_UNANCHOR_ASSEMBLY_MASS
-local PILLAR_COLOR = GameConstants.EARTHQUAKE_SIMULATION.PILLAR_COLOR
-local STUCCO_TILE_SIZE = GameConstants.EARTHQUAKE_SIMULATION.STUCCO_TILE_SIZE
-local TV_SIZE = GameConstants.EARTHQUAKE_SIMULATION.TV_SIZE
-local SIZE_EPSILON = GameConstants.EARTHQUAKE_SIMULATION.SIZE_EPSILON
+local MIN_VOLUME_QUAKE = 0.15
+local SCAN_YIELD_EVERY = 2000
+local MIN_STRUCTURAL_VOLUME = 1.2
+local MAX_STRUCTURAL_VOLUME = 220
+local MAX_PART_DIMENSION = 28
+local MAX_UNANCHOR_ASSEMBLY_MASS = 900
 
--- ========================= EARTHQUAKE CANDIDATES CACHE =========================
--- Caches collected earthquake candidates per location to avoid rescanning.
-local earthquakeCandidatesCache = {}
--- ========================= END CACHE SECTION =========================
+local PILLAR_COLOR = Color3.fromRGB(181, 125, 93)
+local STUCCO_TILE_SIZE = Vector3.new(3.288, 0.038, 3.288)
+local TV_SIZE = Vector3.new(10.17, 5.751, 0.052)
+local SIZE_EPSILON = 0.02
 
 local EarthquakeSimulation = {}
 
@@ -118,24 +110,7 @@ local function getBuildingModel(locationName)
 end
 
 -- Collects candidate earthquake objects from a building.
--- Uses cache if available to avoid repeated descendant scans.
 function EarthquakeSimulation.collectEarthquakeCandidates(building)
-	if not building then
-		return {
-			tiles = {},
-			tvs = {},
-			pillars = {},
-			lightModels = {},
-			structural = {},
-		}
-	end
-	
-	-- Check cache first (optimization)
-	local locationName = building.Name
-	if earthquakeCandidatesCache[locationName] then
-		return earthquakeCandidatesCache[locationName]
-	end
-	
 	local tiles, tvs, pillars, lightModels, structural = {}, {}, {}, {}, {}
 	local excludedFromStructural = {}
 	local count = 0
@@ -166,17 +141,13 @@ function EarthquakeSimulation.collectEarthquakeCandidates(building)
 			table.insert(structural, obj)
 		end
 	end
-	
-	local result = {
+	return {
 		tiles = tiles,
 		tvs = tvs,
 		pillars = pillars,
 		lightModels = lightModels,
 		structural = structural,
 	}
-	
-	earthquakeCandidatesCache[locationName] = result
-	return result
 end
 
 -- Gets representative part from a model.
@@ -412,57 +383,145 @@ end
 
 -- Starts an earthquake simulation for a player at a location and difficulty.
 function EarthquakeSimulation.start(player, locationName, difficulty, services, state)
-	-- === Validate input parameters ===
-	if not player or not player.Parent then
-		Logger.warn("System", "EarthquakeSimulation.start: Invalid player")
-		return
-	end
-	if not locationName or locationName == "" then
-		Logger.warn("System", "EarthquakeSimulation.start: Empty location name")
-		DialogService.send(player, "Error", "Ubicación no especificada.")
-		return
-	end
-	if not services then
-		Logger.warn("System", "EarthquakeSimulation.start: Missing services")
-		DialogService.send(player, "Error", "Servicios no disponibles.")
-		return
-	end
-	if not state then
-		Logger.warn("System", "EarthquakeSimulation.start: Missing simulation state")
-		DialogService.send(player, "Error", "Estado del simulacro no válido.")
-		return
-	end
-
-	local p = GameConstants.getSimulationParams("EarthquakeSimulation", difficulty)
-	if not p then
-		Logger.warn("System", "EarthquakeSimulation.start: Could not load parameters for difficulty " .. tostring(difficulty))
-		DialogService.send(player, "Error", "Parámetros de dificultad no válidos.")
-		services.stopExternalSimulation(player)
-		return
-	end
+	local params = {
+		[1] = { duration = 10, shakeScale = 3.0, prepTime = 6 },
+		[2] = { duration = 15, shakeScale = 5.0, prepTime = 5 },
+		[3] = { duration = 20, shakeScale = 7.0, prepTime = 4 },
+	}
+	local p = params[math.clamp(difficulty, 1, 3)]
 
 	local building = getBuildingModel(locationName)
 	if not building then
-		Logger.warn("System", "EarthquakeSimulation.start: Building model not found - " .. locationName)
 		services.stopExternalSimulation(player)
 		DialogService.send(player, "Error", "No se pudo cargar la ubicacion del ejercicio.")
 		return
 	end
+	if not services.canStartSimulation("Earthquake", locationName) then
+		services.stopExternalSimulation(player)
+		DialogService.send(player, "Error", "Ya hay un simulacro de sismo activo en esta ubicacion.")
+		return
+	end
+
+	services.setSimulationActive("Earthquake", locationName, true)
+	services.setPowerMode("BLACKOUT")
+	NavigationUtils.teleportToSpawn(player, "EarthquakeSimulation", locationName)
 
 	local refuges = NavigationUtils.getRefuges(locationName, "EarthquakeSimulation")
 
-	-- === Use SimulationBase for common lifecycle ===
-	local base = SimulationBase.new("EarthquakeSimulation")
+	local steps = KioskConfig.getSteps("EarthquakeSimulation")
+	state.playerSimulationData[player.UserId] = {
+		startTime = tick(),
+		waypointTimes = {},
+		lastWaypointTime = tick(),
+		maxTimes = steps.maxTimes,
+		stepNames = steps.stepNames,
+		connections = {},
+	}
 
-	-- === Define simulation-specific logic ===
-	local function onEarthquakeSimulationStart(player, session, services)
-		local originalStates = {}
+	local session = state.playerSimulationData[player.UserId]
+	Logger.info("System", string.format("Earthquake simulation started for %s at %s (difficulty %d)", player.Name, locationName, difficulty))
+	services.HUDService.startTicker(player, session, services)
 
-		-- Override cleanup to include earthquake-specific cleanup
-		local originalCleanup = session.cleanup
-		session.cleanup = function()
-			EarthquakeSimulation.restoreEarthquakeDrops(originalStates)
-			
+	local function recordStep()
+		local now = tick()
+		table.insert(session.waypointTimes, now - session.lastWaypointTime)
+		session.lastWaypointTime = now
+	end
+
+	DialogService.send(player, "Warning", "ALERTA SISMICA — Se ha detectado actividad sismica en la zona.")
+	task.wait(2)
+	DialogService.send(player, "Info", "Mantenga la calma. Prepare para seguir el protocolo de sismo.")
+	task.wait(p.prepTime)
+
+	local originalStates = {}
+	task.spawn(function()
+		originalStates = EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
+	end)
+
+	services.playIntercomSound(services.EARTHQUAKE_ALARM_SOUND_ID)
+	DialogService.send(player, "Warning", "MOVIMIENTO SISMICO EN CURSO.")
+	services.startEarthquakeMotor(p.duration, difficulty)
+	task.wait(1)
+
+	pcall(function()
+		local ev = ReplicatedStorage:FindFirstChild("CameraShakeEvent")
+		if ev then
+			ev:FireClient(player, p.duration, p.shakeScale)
+		end
+	end)
+
+	services.controllerHUDEvent:FireClient(player, "Show")
+	NavigationUtils.highlightRefuges(refuges, true)
+	DialogService.send(player, "Warning", "PASO 1: AGACHESE, CUBRASE Y AGÁRRESE.")
+	task.wait(1)
+	DialogService.send(player, "Info", "Ubiquese bajo un escritorio o estructura resistente. Proteja cabeza y cuello.")
+
+	NavigationUtils.setupRefugeDetection(player, refuges, function()
+		recordStep()
+		NavigationUtils.highlightRefuges(refuges, false)
+		DialogService.send(player, "Success", "Posicion de proteccion adoptada correctamente.")
+		task.wait(1)
+		DialogService.send(player, "Info", "Mantenga la posicion hasta que cese el movimiento.")
+
+		task.wait(p.duration)
+
+		DialogService.send(player, "Info", "El movimiento principal ha cesado.")
+		task.wait(1)
+		EarthquakeSimulation.triggerAftershocks(player, 2, 12)
+
+		task.wait(2)
+		local wp2 = NavigationUtils.getWaypoint(locationName, "EarthquakeSimulation", 2)
+		if not wp2 then
+			Logger.warn("System", "EarthquakeSimulation Waypoint2 is missing")
+			services.setSimulationActive("Earthquake", locationName, false)
+			services.setPowerMode("NORMAL")
+			services.controllerHUDEvent:FireClient(player, "Hide")
+			services.HUDService.stopTicker(player)
+			services.stopExternalSimulation(player)
+			state.playerSimulationData[player.UserId] = nil
+			return
+		end
+
+		NavigationUtils.highlightPart(wp2, true)
+		DialogService.send(player, "Warning", "PASO 2: Evacue el edificio de forma ordenada.")
+		task.wait(1)
+		DialogService.send(player, "Info", "Use escaleras. No use ascensores. Atienda replicas.")
+
+		task.wait(3)
+		EarthquakeSimulation.triggerAftershocks(player, 3, 8)
+
+		NavigationUtils.setupWaypointDetection(player, wp2, 2, function()
+			recordStep()
+			NavigationUtils.highlightPart(wp2, false)
+			DialogService.send(player, "Success", "Salida del edificio alcanzada.")
+			task.wait(2)
+
+			local wp3 = NavigationUtils.getWaypoint(locationName, "EarthquakeSimulation", 3)
+			if not wp3 then
+				Logger.warn("System", "EarthquakeSimulation Waypoint3 is missing")
+				services.setSimulationActive("Earthquake", locationName, false)
+				services.setPowerMode("NORMAL")
+				services.controllerHUDEvent:FireClient(player, "Hide")
+				services.HUDService.stopTicker(player)
+				services.stopExternalSimulation(player)
+				state.playerSimulationData[player.UserId] = nil
+				return
+			end
+
+			NavigationUtils.highlightPart(wp3, true)
+			DialogService.send(player, "Warning", "PASO 3: Dirijase a la zona segura externa.")
+			task.wait(1)
+			DialogService.send(player, "Info", "Alejese de edificios, postes y cables. Busque un area abierta.")
+
+			NavigationUtils.setupWaypointDetection(player, wp3, 3, function()
+				recordStep()
+				NavigationUtils.highlightPart(wp3, false)
+				DialogService.send(player, "Success", "Zona segura alcanzada. Simulacro completado.")
+				task.wait(1)
+				DialogService.send(player, "Info", "Permanezca en la zona hasta recibir nueva instruccion.")
+				task.wait(3)
+
+				EarthquakeSimulation.restoreEarthquakeDrops(originalStates)			
 			-- Reset all doors after simulation ends
 			local resetDoorsFunction = ReplicatedStorage:FindFirstChild("ResetAllDoorsFunction")
 			if resetDoorsFunction and resetDoorsFunction:IsA("BindableFunction") then
@@ -473,112 +532,23 @@ function EarthquakeSimulation.start(player, locationName, difficulty, services, 
 					Logger.warn("Door", "Failed to reset doors in EarthquakeSimulation cleanup: " .. tostring(err))
 				end
 			end
-
-			if originalCleanup then
-				originalCleanup()
-			end
-		end
-
-		-- === Earthquake-specific dialog flow ===
-		DialogService.send(player, "Warning", "ALERTA SISMICA — Se ha detectado actividad sismica en la zona.")
-		task.wait(2)
-		DialogService.send(player, "Info", "Mantenga la calma. Prepare para seguir el protocolo de sismo.")
-		task.wait(p.preAlertTime)
-
-		task.spawn(function()
-			originalStates = EarthquakeSimulation.applyEarthquakeDrops(building, difficulty)
-		end)
-
-		services.playIntercomSound(services.EARTHQUAKE_ALARM_SOUND_ID)
-		DialogService.send(player, "Warning", "MOVIMIENTO SISMICO EN CURSO.")
-		services.startEarthquakeMotor(p.duration, difficulty)
-		task.wait(1)
-
-		pcall(function()
-			local ev = ReplicatedStorage:FindFirstChild("CameraShakeEvent")
-			if ev then
-				ev:FireClient(player, p.duration, p.scale)
-			end
-		end)
-
-		services.controllerHUDEvent:FireClient(player, "Show")
-		NavigationUtils.highlightRefuges(refuges, true)
-		DialogService.send(player, "Warning", "PASO 1: AGACHESE, CUBRASE Y AGÁRRESE.")
-		task.wait(1)
-		DialogService.send(player, "Info", "Ubiquese bajo un escritorio o estructura resistente. Proteja cabeza y cuello.")
-
-		NavigationUtils.setupRefugeDetection(player, refuges, function()
-			base:recordStep(session)
-			NavigationUtils.highlightRefuges(refuges, false)
-			DialogService.send(player, "Success", "Posicion de proteccion adoptada correctamente.")
-			task.wait(1)
-			DialogService.send(player, "Info", "Mantenga la posicion hasta que cese el movimiento.")
-
-			task.wait(p.duration)
-
-			DialogService.send(player, "Info", "El movimiento principal ha cesado.")
-			task.wait(1)
-			EarthquakeSimulation.triggerAftershocks(player, 2, 12)
-
-			task.wait(2)
-			local wp2 = NavigationUtils.getWaypoint(locationName, "EarthquakeSimulation", 2)
-			if not wp2 then
-				Logger.warn("System", "EarthquakeSimulation Waypoint2 is missing")
-				session.cleanup()
-				return
-			end
-
-			NavigationUtils.highlightPart(wp2, true)
-			DialogService.send(player, "Warning", "PASO 2: Evacue el edificio de forma ordenada.")
-			task.wait(1)
-			DialogService.send(player, "Info", "Use escaleras. No use ascensores. Atienda replicas.")
-
-			task.wait(3)
-			EarthquakeSimulation.triggerAftershocks(player, 3, 8)
-
-			NavigationUtils.setupWaypointDetection(player, wp2, 2, function()
-				base:recordStep(session)
-				NavigationUtils.highlightPart(wp2, false)
-				DialogService.send(player, "Success", "Salida del edificio alcanzada.")
-				task.wait(2)
-
-				local wp3 = NavigationUtils.getWaypoint(locationName, "EarthquakeSimulation", 3)
-				if not wp3 then
-					Logger.warn("System", "EarthquakeSimulation Waypoint3 is missing")
-					session.cleanup()
-					return
-				end
-
-				NavigationUtils.highlightPart(wp3, true)
-				DialogService.send(player, "Warning", "PASO 3: Dirijase a la zona segura externa.")
-				task.wait(1)
-				DialogService.send(player, "Info", "Alejese de edificios, postes y cables. Busque un area abierta.")
-
-				NavigationUtils.setupWaypointDetection(player, wp3, 3, function()
-					base:recordStep(session)
-					NavigationUtils.highlightPart(wp3, false)
-					DialogService.send(player, "Success", "Zona segura alcanzada. Simulacro completado.")
-					task.wait(1)
-					DialogService.send(player, "Info", "Permanezca en la zona hasta recibir nueva instruccion.")
-					task.wait(3)
-
-					session.cleanup()
-					services.controllerHUDEvent:FireClient(player, "Hide")
-					ResultsSystem.show(
-						player,
-						session,
-						"EarthquakeSimulation",
-						locationName,
-						difficulty,
-						services.mainLobbySpawn
-					)
-				end)
+							services.setSimulationActive("Earthquake", locationName, false)
+				services.setPowerMode("NORMAL")
+				services.controllerHUDEvent:FireClient(player, "Hide")
+				ResultsSystem.show(
+					player,
+					session,
+					"EarthquakeSimulation",
+					locationName,
+					difficulty,
+					services.mainLobbySpawn
+				)
+				services.HUDService.stopTicker(player)
+				services.stopExternalSimulation(player)
+				state.playerSimulationData[player.UserId] = nil
 			end)
 		end)
-	end
-
-	-- === Activate simulation with SimulationBase ===
-	base:activateSimulation(player, locationName, difficulty, services, state, onEarthquakeSimulationStart)
+	end)
 end
 
-
+return EarthquakeSimulation

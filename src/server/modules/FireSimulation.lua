@@ -1,36 +1,60 @@
 -- FireSimulation
 -- Purpose: Fire drill flow, procedural fire behavior, and firefighter visibility control.
 -- Dependencies: DialogService, NavigationUtils, ScoringSystem, KioskConfig
--- Optimization: Caches building parts per location to avoid repeated descendant scans.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local DialogService = require(script.Parent.DialogService)
 local NavigationUtils = require(script.Parent.NavigationUtils)
 local ResultsSystem = require(script.Parent.ResultsSystem)
-local SimulationBase = require(script.Parent.SimulationBase)
 local KioskConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("KioskConfig"))
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Logger"))
-local GameConstants = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("GameConstants"))
 
 local RNG = Random.new()
 
--- Constants from GameConstants
-local IGNORED_PART_NAMES = GameConstants.FIRE_SIMULATION.IGNORED_PART_NAMES
-local MIN_VOLUME_FIRE = GameConstants.FIRE_SIMULATION.MIN_VOLUME_FIRE
-local SCAN_YIELD_EVERY = GameConstants.FIRE_SIMULATION.SCAN_YIELD_EVERY
-local SMOKE_COLOR = GameConstants.FIRE_SIMULATION.SMOKE_COLOR
-local PARTICLE_PRESETS_ROOT = GameConstants.FIRE_SIMULATION.PARTICLE_PRESETS_ROOT
-local PARTICLE_PRESET_SMALL_NAME = GameConstants.FIRE_SIMULATION.PARTICLE_PRESET_SMALL_NAME
-local PARTICLE_PRESET_LARGE_NAME = GameConstants.FIRE_SIMULATION.PARTICLE_PRESET_LARGE_NAME
-local PARTICLE_EFFECT_TYPE_ATTRIBUTE = GameConstants.FIRE_SIMULATION.PARTICLE_EFFECT_TYPE_ATTRIBUTE
-local FIRE_BASE_RATE = GameConstants.FIRE_SIMULATION.FIRE_BASE_RATE
-local SMOKE_TO_FIRE_RATE_RATIO = GameConstants.FIRE_SIMULATION.SMOKE_TO_FIRE_RATE_RATIO
-local RATE_REFERENCE_FIRE_SIZE = GameConstants.FIRE_SIMULATION.RATE_REFERENCE_FIRE_SIZE
-local RATE_MIN_MULTIPLIER = GameConstants.FIRE_SIMULATION.RATE_MIN_MULTIPLIER
-local RATE_MAX_MULTIPLIER = GameConstants.FIRE_SIMULATION.RATE_MAX_MULTIPLIER
-local LARGE_PART_MIN_VOLUME = GameConstants.FIRE_SIMULATION.LARGE_PART_MIN_VOLUME
-local DYNAMIC_PARTICLE_PREFIX = GameConstants.FIRE_SIMULATION.DYNAMIC_PARTICLE_PREFIX
+local IGNORED_PART_NAMES = {
+	["Baseplate"] = true,
+	["Terrain"] = true,
+}
+
+local MIN_VOLUME_FIRE = 0.05
+local SCAN_YIELD_EVERY = 2000
+local SMOKE_COLOR = Color3.fromRGB(117, 117, 117)
+
+-- ========================= PARTICLE CONFIG (EDIT HERE) =========================
+-- Folder path in ReplicatedStorage that contains your 2 presets.
+-- Example structure:
+-- ReplicatedStorage
+--   Particles
+--     Fire
+--       FireSmall (3 ParticleEmitters)
+--       FireLarge (4 ParticleEmitters)
+local PARTICLE_PRESETS_ROOT = { "Particles", "Fire" }
+
+-- Names of each preset object inside PARTICLE_PRESETS_ROOT.
+local PARTICLE_PRESET_SMALL_NAME = "FireSmall"
+local PARTICLE_PRESET_LARGE_NAME = "FireLarge"
+
+-- Your emitters should define an attribute to classify type:
+-- EffectType = "Fire"  or  EffectType = "Smoke"
+local PARTICLE_EFFECT_TYPE_ATTRIBUTE = "EffectType"
+
+-- Base relation requested:
+-- Fire rate = 10, Smoke rate = 40 (x4 over fire).
+local FIRE_BASE_RATE = 10
+local SMOKE_TO_FIRE_RATE_RATIO = 4
+
+-- Rate scaling based on computed fire size.
+local RATE_REFERENCE_FIRE_SIZE = 10
+local RATE_MIN_MULTIPLIER = 0.35
+local RATE_MAX_MULTIPLIER = 3.0
+
+-- Part volume threshold to pick small vs large preset.
+local LARGE_PART_MIN_VOLUME = 10
+
+-- Prefix used by runtime-generated ParticleEmitters for cleanup.
+local DYNAMIC_PARTICLE_PREFIX = "DynamicFX_"
+-- ======================= END PARTICLE CONFIG (EDIT HERE) =======================
 
 local FIREFIGHTERS_FOLDER = workspace:WaitForChild("FireWaypoints"):WaitForChild("Firefighters")
 local FIREFIGHTER_HIDDEN_OFFSET = Vector3.new(0, -100, 0)
@@ -40,15 +64,6 @@ local firefightersInitialized = false
 local particleRootCache
 local particleRootResolved = false
 local particlePresetWarnings = {}
-
--- ========================= BUILDING PARTS CACHE =========================
--- Caches collected building parts per location name to avoid rescanning.
--- Cache is keyed by locationName and stores the array of valid parts.
--- If a building is modified, cache will become stale but simulation will still work
--- (it will just use potentially invalidated part references, which is safe).
-local buildingPartsCache = {}
-
--- ========================= END CACHE SECTION =========================
 
 local FireSimulation = {}
 
@@ -87,19 +102,7 @@ function FireSimulation.isValidPart(obj)
 end
 
 -- Collects all valid building parts that can participate in fire spread.
--- Uses cache if available to avoid repeated descendant scans.
 function FireSimulation.collectBuildingParts(building)
-	if not building then
-		return {}
-	end
-	
-	-- Check cache first (optimization)
-	local locationName = building.Name
-	if buildingPartsCache[locationName] then
-		return buildingPartsCache[locationName]
-	end
-	
-	-- Scan building and cache result
 	local parts = {}
 	local count = 0
 	for _, obj in ipairs(building:GetDescendants()) do
@@ -111,29 +114,27 @@ function FireSimulation.collectBuildingParts(building)
 			table.insert(parts, obj)
 		end
 	end
-	
-	buildingPartsCache[locationName] = parts
 	return parts
 end
 
 -- Computes fire size based on part size and difficulty.
 function FireSimulation.fireSize(part, difficulty)
-	local params = GameConstants.getSimulationParams("FireSimulation", difficulty)
 	local avg = (part.Size.X + part.Size.Y + part.Size.Z) / 3
-	return math.clamp(avg * params.fireSize, 2, 30)
+	local mult = (difficulty == 1 and 2.85) or (difficulty == 2 and 3.05) or 5.25
+	return math.clamp(avg * mult, 2, 30)
 end
 
 -- Computes fire heat based on difficulty.
 function FireSimulation.fireHeat(difficulty)
-	local params = GameConstants.getSimulationParams("FireSimulation", difficulty)
-	return params.heat
+	return (difficulty == 1 and 20) or (difficulty == 2 and 30) or 40
 end
 
 -- Computes smoke size and rise velocity based on part and difficulty.
 function FireSimulation.smokeParams(part, difficulty)
-	local params = GameConstants.getSimulationParams("FireSimulation", difficulty)
 	local avg = (part.Size.X + part.Size.Y + part.Size.Z) / 3
-	return math.clamp(avg * params.smokeSizeMult, 3, 25), params.smokeRise
+	local sizeMult = (difficulty == 1 and 1.0) or (difficulty == 2 and 1.2) or 1.4
+	local rise = (difficulty == 1 and 8) or (difficulty == 2 and 6) or 4
+	return math.clamp(avg * sizeMult, 3, 25), rise
 end
 
 local function resolveParticleRoot()
@@ -298,14 +299,13 @@ function FireSimulation.spreadFire(parts, difficulty, durationSeconds, seedPart)
 		return {}
 	end
 
-	local params = GameConstants.getSimulationParams("FireSimulation", difficulty)
 	local burnedSet = {}
 	local burningList = {}
 
-	local spreadRadius = params.spreadRadius
-	local maxPerWave = params.partsPerWave
-	local waveInterval = params.waveInterval
-	local maxTotal = params.maxBurning
+	local spreadRadius = (difficulty == 1 and 18) or (difficulty == 2 and 26) or 35
+	local maxPerWave = (difficulty == 1 and 6) or (difficulty == 2 and 10) or 14
+	local waveInterval = (difficulty == 1 and 4.0) or (difficulty == 2 and 3.0) or 2.0
+	local maxTotal = (difficulty == 1 and 100) or (difficulty == 2 and 150) or 200
 
 	local endTime = tick() + durationSeconds
 	local seed = seedPart or FireSimulation.pickFireOrigin(parts)
@@ -347,14 +347,11 @@ function FireSimulation.spreadFire(parts, difficulty, durationSeconds, seedPart)
 
 		local front = burningList[RNG:NextInteger(1, #burningList)]
 		if not front or not front.Parent then
-			-- Mark-and-sweep: instead of immediate removal, mark invalid entries
-			local validList = {}
-			for _, part in ipairs(burningList) do
-				if part and part.Parent then
-					table.insert(validList, part)
+			for i = #burningList, 1, -1 do
+				if not burningList[i] or not burningList[i].Parent then
+					table.remove(burningList, i)
 				end
 			end
-			burningList = validList
 			continue
 		end
 
@@ -366,20 +363,14 @@ function FireSimulation.spreadFire(parts, difficulty, durationSeconds, seedPart)
 			end
 		end
 
-		-- Mark-and-sweep for overflow management: rebuild list without excess
 		if #burningList > maxTotal then
 			local excess = #burningList - maxTotal
-			local newList = {}
-			for i, part in ipairs(burningList) do
-				if i > excess then
-					table.insert(newList, part)
-				else
-					if part and part.Parent then
-						FireSimulation.extinguish(part)
-					end
+			for _ = 1, excess do
+				local old = table.remove(burningList, 1)
+				if old and old.Parent then
+					FireSimulation.extinguish(old)
 				end
 			end
-			burningList = newList
 		end
 	end
 
@@ -431,242 +422,254 @@ function FireSimulation.showFirefighters()
 end
 
 -- Starts a fire simulation for a player at a location and difficulty.
--- Starts a fire simulation using unified SimulationBase lifecycle
 function FireSimulation.start(player, locationName, difficulty, services, state)
-	-- === Validate input parameters ===
-	if not player or not player.Parent then
-		Logger.warn("System", "FireSimulation.start: Invalid player")
-		return
-	end
-	if not locationName or locationName == "" then
-		Logger.warn("System", "FireSimulation.start: Empty location name")
-		DialogService.send(player, "Error", "Ubicación no especificada.")
-		return
-	end
-	if not services then
-		Logger.warn("System", "FireSimulation.start: Missing services")
-		DialogService.send(player, "Error", "Servicios no disponibles.")
-		return
-	end
-	if not state then
-		Logger.warn("System", "FireSimulation.start: Missing simulation state")
-		DialogService.send(player, "Error", "Estado del simulacro no válido.")
-		return
-	end
+	local params = {
+		[1] = { duration = 55 },
+		[2] = { duration = 70 },
+		[3] = { duration = 90 },
+	}
+	local p = params[math.clamp(difficulty, 1, 3)]
 
-	local p = GameConstants.getSimulationParams("FireSimulation", difficulty)
-	if not p then
-		Logger.warn("System", "FireSimulation.start: Could not load parameters for difficulty " .. tostring(difficulty))
-		DialogService.send(player, "Error", "Parámetros de dificultad no válidos.")
-		services.stopExternalSimulation(player)
-		return
-	end
-
-	-- === Load building and validate ===
 	local building = getBuildingModel(locationName)
 	if not building then
-		Logger.warn("System", "FireSimulation.start: Building model not found - " .. locationName)
 		services.stopExternalSimulation(player)
 		DialogService.send(player, "Error", "No se pudo cargar la ubicacion del ejercicio.")
 		return
 	end
+	if not services.canStartSimulation("Fire", locationName) then
+		services.stopExternalSimulation(player)
+		DialogService.send(player, "Error", "Ya hay un simulacro de incendio activo en esta ubicacion.")
+		return
+	end
+
+	services.setSimulationActive("Fire", locationName, true)
+	services.setPowerMode("BLACKOUT")
 
 	local buildingParts = FireSimulation.collectBuildingParts(building)
 	local seedPart = FireSimulation.pickFireOrigin(buildingParts)
 
 	if not seedPart then
 		Logger.warn("System", string.format("Fire origin could not be determined for location %s", locationName))
+		services.setSimulationActive("Fire", locationName, false)
+		services.setPowerMode("NORMAL")
 		services.stopExternalSimulation(player)
 		DialogService.send(player, "Error", "No se pudo iniciar el simulacro. Intente nuevamente.")
 		return
 	end
 
-	-- === Use SimulationBase for common lifecycle ===
-	local base = SimulationBase.new("FireSimulation")
-	
-	-- === Define simulation-specific logic ===
-	local function onFireSimulationStart(player, session, services)
-		local affectedParts = {}
+	local teleported = NavigationUtils.teleportToClosestSpawn(player, "FireSimulation", locationName, seedPart)
+	if not teleported then
+		services.setSimulationActive("Fire", locationName, false)
+		services.setPowerMode("NORMAL")
+		services.stopExternalSimulation(player)
+		DialogService.send(player, "Error", "No se pudo ubicar al participante. Intente nuevamente.")
+		return
+	end
 
-		-- Override cleanup to include fire-specific cleanup
-		local originalCleanup = session.cleanup
-		session.cleanup = function()
-			for _, part in ipairs(affectedParts) do
-				FireSimulation.extinguish(part)
-			end
-			FireSimulation.hideFirefighters()
-			
-			-- Reset all doors after simulation ends
-			local resetDoorsFunction = ReplicatedStorage:FindFirstChild("ResetAllDoorsFunction")
-			if resetDoorsFunction and resetDoorsFunction:IsA("BindableFunction") then
-				local ok, err = pcall(function()
-					resetDoorsFunction:Invoke()
-				end)
-				if not ok then
-					Logger.warn("Door", "Failed to reset doors in FireSimulation cleanup: " .. tostring(err))
-				end
-			end
+	local steps = KioskConfig.getSteps("FireSimulation")
+	state.playerSimulationData[player.UserId] = {
+		startTime = tick(),
+		waypointTimes = {},
+		lastWaypointTime = tick(),
+		maxTimes = steps.maxTimes,
+		stepNames = steps.stepNames,
+		connections = {},
+		seedPart = seedPart,
+		simulationEnded = false,
+	}
 
-			if originalCleanup then
-				originalCleanup()
+	local session = state.playerSimulationData[player.UserId]
+	player.CharacterRemoving:Connect(function()
+		if session then
+			session.simulationEnded = true
+		end
+	end)
+	Logger.info("System", string.format("Fire simulation started for %s at %s (difficulty %d)", player.Name, locationName, difficulty))
+	services.HUDService.startTicker(player, session, services)
+
+	local function recordStep()
+		local now = tick()
+		table.insert(session.waypointTimes, now - session.lastWaypointTime)
+		session.lastWaypointTime = now
+	end
+
+	local affectedParts = {}
+
+	local function cleanup()
+		if session.simulationEnded then
+			return
+		end
+		session.simulationEnded = true
+		services.stopExternalSimulation(player)
+		for _, part in ipairs(affectedParts) do
+			FireSimulation.extinguish(part)
+		end
+		FireSimulation.hideFirefighters()
+		
+		-- Reset all doors after simulation ends
+		local resetDoorsFunction = ReplicatedStorage:FindFirstChild("ResetAllDoorsFunction")
+		if resetDoorsFunction and resetDoorsFunction:IsA("BindableFunction") then
+			local ok, err = pcall(function()
+				resetDoorsFunction:Invoke()
+			end)
+			if not ok then
+				Logger.warn("Door", "Failed to reset doors in FireSimulation cleanup: " .. tostring(err))
 			end
 		end
+		
+		services.setSimulationActive("Fire", locationName, false)
+		services.setPowerMode("NORMAL")
+		services.HUDService.stopTicker(player)
+		state.playerSimulationData[player.UserId] = nil
+	end
 
-		-- Store seed part for later reference
-		session.seedPart = seedPart
+	task.spawn(function()
+		affectedParts = FireSimulation.spreadFire(buildingParts, difficulty, p.duration, seedPart)
+	end)
 
-		-- Start fire spread in background
-		task.spawn(function()
-			affectedParts = FireSimulation.spreadFire(buildingParts, difficulty, p.duration, seedPart)
-		end)
+	task.wait(0.5)
+	FireSimulation.showFirefighters()
 
-		task.wait(0.5)
-		FireSimulation.showFirefighters()
+	if seedPart and seedPart.Parent then
+		NavigationUtils.highlightPart(seedPart, true)
+	end
 
-		-- === Fire-specific dialog flow ===
-		if seedPart and seedPart.Parent then
-			NavigationUtils.highlightPart(seedPart, true)
-		end
+	DialogService.send(
+		player,
+		"Warning",
+		"SIMULACRO DE INCENDIO — Se ha reportado un foco de fuego en las instalaciones."
+	)
+	task.wait(2)
+	DialogService.send(player, "Warning", "El origen del fuego ha sido identificado y senalado. Localicelo.")
 
-		DialogService.send(
-			player,
-			"Warning",
-			"SIMULACRO DE INCENDIO — Se ha reportado un foco de fuego en las instalaciones."
-		)
-		task.wait(2)
-		DialogService.send(player, "Warning", "El origen del fuego ha sido identificado y senalado. Localicelo.")
+	services.controllerHUDEvent:FireClient(player, "Show")
+	DialogService.send(player, "Info", "PASO 1: Acerquese al origen del fuego senalado para identificarlo.")
 
-		services.controllerHUDEvent:FireClient(player, "Show")
-		DialogService.send(player, "Info", "PASO 1: Acerquese al origen del fuego senalado para identificarlo.")
+	local originDetected = false
 
-		-- === Origin detection loop ===
-		local originDetected = false
+	task.spawn(function()
+		while not originDetected and not session.simulationEnded do
+			task.wait(0.5)
+			if not player.Parent then
+				break
+			end
+			if session.simulationEnded then
+				break
+			end
 
-		task.spawn(function()
-			while not originDetected and not session.simulationEnded do
-				task.wait(0.5)
-				if not player.Parent or session.simulationEnded then
-					break
-				end
+			if player.Character then
+				local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+				if hrp and seedPart and seedPart.Parent then
+					if (hrp.Position - seedPart.Position).Magnitude <= 40 then
+						originDetected = true
+						recordStep()
+						NavigationUtils.highlightPart(seedPart, false)
 
-				if player.Character then
-					local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-					if hrp and seedPart and seedPart.Parent then
-						if (hrp.Position - seedPart.Position).Magnitude <= 40 then
-							originDetected = true
-							base:recordStep(session)
-							NavigationUtils.highlightPart(seedPart, false)
+						DialogService.send(player, "Success", "Origen del fuego identificado correctamente.")
+						task.wait(1)
 
-							DialogService.send(player, "Success", "Origen del fuego identificado correctamente.")
+						local wp2 = NavigationUtils.getWaypoint(locationName, "FireSimulation", 2)
+						if not wp2 then
+							Logger.warn("System", "FireSimulation Waypoint2 is missing")
+							cleanup()
+							return
+						end
+
+						NavigationUtils.highlightPart(wp2, true)
+						DialogService.send(
+							player,
+							"Warning",
+							"PASO 2: Dirijase al punto senalado y active la alarma de incendio."
+						)
+
+						NavigationUtils.setupWaypointDetection(player, wp2, 2, function()
+							recordStep()
+							NavigationUtils.highlightPart(wp2, false)
+							services.playIntercomSound(services.FIRE_ALARM_SOUND_ID)
+							DialogService.send(player, "Success", "Alarma de incendio activada. Personal notificado.")
 							task.wait(1)
 
-							local wp2 = NavigationUtils.getWaypoint(locationName, "FireSimulation", 2)
-							if not wp2 then
-								Logger.warn("System", "FireSimulation Waypoint2 is missing")
-								session.cleanup()
+							local wp3 = NavigationUtils.getWaypoint(locationName, "FireSimulation", 3)
+							if not wp3 then
+								Logger.warn("System", "FireSimulation Waypoint3 is missing")
+								cleanup()
 								return
 							end
 
-							NavigationUtils.highlightPart(wp2, true)
+							NavigationUtils.highlightPart(wp3, true)
 							DialogService.send(
 								player,
 								"Warning",
-								"PASO 2: Dirijase al punto senalado y active la alarma de incendio."
+								"PASO 3: Evacue el edificio de inmediato. Camine rapido, no corra."
+							)
+							task.wait(1)
+							DialogService.send(
+								player,
+								"Info",
+								"Use las salidas de emergencia. Mantengase alejado del fuego."
 							)
 
-							NavigationUtils.setupWaypointDetection(player, wp2, 2, function()
-								base:recordStep(session)
-								NavigationUtils.highlightPart(wp2, false)
-								services.playIntercomSound(services.FIRE_ALARM_SOUND_ID)
-								DialogService.send(player, "Success", "Alarma de incendio activada. Personal notificado.")
+							NavigationUtils.setupWaypointDetection(player, wp3, 3, function()
+								recordStep()
+								NavigationUtils.highlightPart(wp3, false)
+								DialogService.send(player, "Success", "Salida de emergencia alcanzada.")
 								task.wait(1)
 
-								local wp3 = NavigationUtils.getWaypoint(locationName, "FireSimulation", 3)
-								if not wp3 then
-									Logger.warn("System", "FireSimulation Waypoint3 is missing")
-									session.cleanup()
+								local wp4 = NavigationUtils.getWaypoint(locationName, "FireSimulation", 4)
+								if not wp4 then
+									Logger.warn("System", "FireSimulation Waypoint4 is missing")
+									cleanup()
 									return
 								end
 
-								NavigationUtils.highlightPart(wp3, true)
-								DialogService.send(
-									player,
-									"Warning",
-									"PASO 3: Evacue el edificio de inmediato. Camine rapido, no corra."
-								)
+								NavigationUtils.highlightPart(wp4, true)
+								DialogService.send(player, "Warning", "PASO 4: Dirijase al punto de encuentro externo.")
 								task.wait(1)
 								DialogService.send(
 									player,
 									"Info",
-									"Use las salidas de emergencia. Mantengase alejado del fuego."
+									"Permanezca ahi hasta nueva instruccion. No reingrese al edificio."
 								)
 
-								NavigationUtils.setupWaypointDetection(player, wp3, 3, function()
-									base:recordStep(session)
-									NavigationUtils.highlightPart(wp3, false)
-									DialogService.send(player, "Success", "Salida de emergencia alcanzada.")
-									task.wait(1)
-
-									local wp4 = NavigationUtils.getWaypoint(locationName, "FireSimulation", 4)
-									if not wp4 then
-										Logger.warn("System", "FireSimulation Waypoint4 is missing")
-										session.cleanup()
-										return
-									end
-
-									NavigationUtils.highlightPart(wp4, true)
-									DialogService.send(player, "Warning", "PASO 4: Dirijase al punto de encuentro externo.")
-									task.wait(1)
+								NavigationUtils.setupWaypointDetection(player, wp4, 4, function()
+									recordStep()
+									NavigationUtils.highlightPart(wp4, false)
 									DialogService.send(
 										player,
-										"Info",
-										"Permanezca ahi hasta nueva instruccion. No reingrese al edificio."
+										"Success",
+										"Punto de encuentro alcanzado. Simulacro completado."
 									)
-
-									NavigationUtils.setupWaypointDetection(player, wp4, 4, function()
-										base:recordStep(session)
-										NavigationUtils.highlightPart(wp4, false)
-										DialogService.send(
-											player,
-											"Success",
-											"Punto de encuentro alcanzado. Simulacro completado."
-										)
-										task.wait(2)
-										session.cleanup()
-										services.controllerHUDEvent:FireClient(player, "Hide")
-										ResultsSystem.show(
-											player,
-											session,
-											"FireSimulation",
-											locationName,
-											difficulty,
-											services.mainLobbySpawn
-										)
-									end)
+									task.wait(2)
+									cleanup()
+									services.controllerHUDEvent:FireClient(player, "Hide")
+									ResultsSystem.show(
+										player,
+										session,
+										"FireSimulation",
+										locationName,
+										difficulty,
+										services.mainLobbySpawn
+									)
 								end)
 							end)
-						end
+						end)
 					end
 				end
 			end
-		end)
+		end
+	end)
 
-		-- === Global timeout ===
-		task.delay(services.SIMULATION_GLOBAL_TIMEOUT, function()
-			if state.playerSimulationData[player.UserId] then
-				Logger.warn(
-					"System",
-					string.format("Fire simulation global timeout reached (%ds) for %s", services.SIMULATION_GLOBAL_TIMEOUT, player.Name)
-				)
-				session.cleanup()
-				DialogService.send(player, "Warning", "El simulacro ha finalizado por tiempo limite.")
-				NavigationUtils.teleportPlayer(player, services.mainLobbySpawn)
-			end
-		end)
-	end
-
-	-- === Override SimulationBase to use our custom teleport ===
-	base:activateSimulation(player, locationName, difficulty, services, state, onFireSimulationStart)
+	task.delay(services.SIMULATION_GLOBAL_TIMEOUT, function()
+		if state.playerSimulationData[player.UserId] then
+			Logger.warn(
+				"System",
+				string.format("Fire simulation global timeout reached (%ds) for %s", services.SIMULATION_GLOBAL_TIMEOUT, player.Name)
+			)
+			cleanup()
+			DialogService.send(player, "Warning", "El simulacro ha finalizado por tiempo limite.")
+			NavigationUtils.teleportPlayer(player, services.mainLobbySpawn)
+		end
+	end)
 end
 
 return FireSimulation

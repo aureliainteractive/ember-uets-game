@@ -337,8 +337,25 @@ simulationStartBindable.Event:Connect(function(player, eventType, locationName, 
 		)
 	)
 
-	-- Start simulation immediately - teleport and everything
-	startSimulationNow(player, eventType, locationName, difficulty)
+	local request = {
+		player = player,
+		eventType = eventType,
+		locationName = locationName,
+		difficulty = difficulty,
+	}
+	pendingSimulationStarts[player.UserId] = request
+
+	task.delay(LOADING_READY_TIMEOUT, function()
+		local pending = pendingSimulationStarts[player.UserId]
+		if pending ~= request then
+			return
+		end
+		pendingSimulationStarts[player.UserId] = nil
+		if player and player.Parent then
+			Logger.warn("System", string.format("Loading ready timeout reached for %s", player.Name))
+			startSimulationNow(player, eventType, locationName, difficulty)
+		end
+	end)
 end)
 
 setPowerMode("NORMAL")
