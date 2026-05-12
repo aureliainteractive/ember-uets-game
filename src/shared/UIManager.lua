@@ -13,14 +13,31 @@ function UIManager.get(playerGui, name, timeout)
 	local start = os.clock()
 	local ui
 
-	repeat
-		ui = playerGui:FindFirstChild(name)
+	-- Try first without waiting
+	ui = playerGui:FindFirstChild(name)
+	if ui then
+		cache[playerGui] = cache[playerGui] or {}
+		cache[playerGui][name] = ui
+		return ui
+	end
 
-		if not ui then
-			playerGui.ChildAdded:Wait()
+	-- If not found, wait for ChildAdded with proper timeout
+	local connection
+	local foundUI = false
+	connection = playerGui.ChildAdded:Connect(function(child)
+		if child.Name == name and not foundUI then
+			ui = child
+			foundUI = true
+			connection:Disconnect()
 		end
+	end)
 
-	until ui or (os.clock() - start) > timeout
+	-- Wait for either the UI to be found or timeout
+	while not foundUI and (os.clock() - start) < timeout do
+		task.wait(0.1)
+	end
+
+	connection:Disconnect()
 
 	if not ui then
 		warn("[UIManager] Missing UI: " .. name)
