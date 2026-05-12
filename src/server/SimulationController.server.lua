@@ -19,18 +19,9 @@ local physicalActuatorBindable = ReplicatedStorage:FindFirstChild("PhysicalActua
 local controllerHUDEvent = ReplicatedStorage:WaitForChild("ControllerUI_HUD")
 local hudUpdateEvent = ReplicatedStorage:WaitForChild("HUDUpdate")
 
-local function getOrCreateRemoteEvent(name)
-	local existing = ReplicatedStorage:FindFirstChild(name)
-	if existing and existing:IsA("RemoteEvent") then
-		return existing
-	end
-	local remoteEvent = Instance.new("RemoteEvent")
-	remoteEvent.Name = name
-	remoteEvent.Parent = ReplicatedStorage
-	return remoteEvent
-end
-
-local simulationLoadingReadyEvent = getOrCreateRemoteEvent("SimulationLoadingReady")
+-- All RemoteEvents should be created in-place in Studio ReplicatedStorage
+-- to avoid replication race conditions
+local simulationLoadingReadyEvent = ReplicatedStorage:WaitForChild("SimulationLoadingReady")
 
 local spawnpointsFolder = workspace:WaitForChild("Spawnpoints")
 local mainLobbySpawn = spawnpointsFolder:WaitForChild("MainLobby")
