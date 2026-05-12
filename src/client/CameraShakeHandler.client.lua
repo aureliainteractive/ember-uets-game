@@ -41,7 +41,7 @@ local function isVR()
 	return VRService.VREnabled
 end
 
--- Ease suave
+-- Ease suave con mejor control
 local function easeInOutCubic(t)
 	if t < 0.5 then
 		return 4 * t * t * t
@@ -49,6 +49,18 @@ local function easeInOutCubic(t)
 		local f = (2 * t) - 2
 		return 0.5 * f * f * f + 1
 	end
+end
+
+-- Ease Back (more pronounced bounce on fade in)
+local function easeOutBack(t)
+	local c1 = 1.70158
+	local c3 = c1 + 1
+	return c3 * t * t * t - c1 * t * t
+end
+
+-- Ease In Quad (smooth fade out)
+local function easeInQuad(t)
+	return t * t
 end
 
 -- ================================
@@ -78,10 +90,12 @@ local function shakeNormal(duration, intensity)
 
 		local currentIntensity = intensity
 
+		-- Smooth fade in with easeOutBack for punch
 		if elapsed < fadeInDuration then
-			currentIntensity *= easeInOutCubic(elapsed / fadeInDuration)
+			currentIntensity *= easeOutBack(elapsed / fadeInDuration)
+		-- Smooth fade out with easeInQuad for smoothness
 		elseif elapsed > (duration - fadeOutDuration) then
-			currentIntensity *= easeInOutCubic((duration - elapsed) / fadeOutDuration)
+			currentIntensity *= easeInQuad((duration - elapsed) / fadeOutDuration)
 		end
 
 		local time = elapsed * 12

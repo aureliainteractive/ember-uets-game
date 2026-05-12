@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 local UIManager = require(ReplicatedStorage.Shared.UIManager)
+local UIAnimationHelper = require(script.Parent.UIAnimationHelper)
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -126,11 +127,24 @@ local function showScreen()
 	for _, row in ipairs(StepRows) do
 		setRowTextTransparency(row, 1)
 	end
+	
+	-- Main container fade-in
 	TweenService:Create(Container, TWEEN_IN, {
 		Position = POS_VISIBLE,
 		ImageTransparency = DEFAULT_CONTAINER_IMAGE_TRANSPARENCY,
 	}):Play()
 
+	-- Rank container glow effect
+	task.spawn(function()
+		task.wait(0.2)
+		local rankImageTarget = getRankImageTarget()
+		if rankImageTarget then
+			-- Pulse the rank with color effect
+			UIAnimationHelper.pulseColor(rankImageTarget, Color3.fromRGB(255, 255, 200), 0.4, 2)
+		end
+	end)
+
+	-- Step rows with staggered animation
 	for index, row in ipairs(StepRows) do
 		task.delay((index - 1) * ROW_STAGGER + 0.12, function()
 			if not Screen.Enabled or not row.Visible then
@@ -141,6 +155,8 @@ local function showScreen()
 					TweenService:Create(desc, ROW_TWEEN_IN, { TextTransparency = 0 }):Play()
 				end
 			end
+			-- Subtle bounce on row appearance
+			UIAnimationHelper.bounce(row, 1.05, 0.2)
 		end)
 	end
 end
@@ -195,7 +211,12 @@ local function populate(payload)
 		rankImageTarget.Image = rankImageId
 	end
 
-	LabelPoints.Text = tostring(payload.totalPoints)
+	-- Animate points counter from 0 to final value
+	task.spawn(function()
+		local totalPoints = payload.totalPoints or 0
+		UIAnimationHelper.animateNumber(LabelPoints, 0, totalPoints, 1.2)
+	end)
+
 	LabelTime.Text = payload.totalTime or "00:00"
 	LabelPrecision.Text = tostring(payload.precision) .. "%"
 	LabelErrors.Text = tostring(payload.criticalErrors)

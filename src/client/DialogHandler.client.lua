@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UIManager = require(ReplicatedStorage.Shared.UIManager)
 local GameConstants = require(ReplicatedStorage.Shared.GameConstants)
+local UIAnimationHelper = require(script.Parent.UIAnimationHelper)
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -179,6 +180,19 @@ function DialogSystem:ShowDialog(data)
 	dialogContainer.ImageTransparency = 1
 	textLabel.TextTransparency = 1
 	iconLabel.ImageTransparency = 1
+
+	-- Color based on dialog type
+	local textColor = Color3.fromRGB(255, 255, 255) -- Default white
+	if data.icon == "Warning" then
+		textColor = Color3.fromRGB(255, 200, 100) -- Orange
+	elseif data.icon == "Error" then
+		textColor = Color3.fromRGB(255, 100, 100) -- Red
+	elseif data.icon == "Success" then
+		textColor = Color3.fromRGB(100, 255, 100) -- Green
+	elseif data.icon == "Info" then
+		textColor = Color3.fromRGB(150, 200, 255) -- Light blue
+	end
+	textLabel.TextColor3 = textColor
 
 	local tweenIn = TweenService:Create(dialogContainer, TWEEN_IN, {
 		Position = POS_VISIBLE,

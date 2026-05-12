@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UIManager = require(ReplicatedStorage.Shared.UIManager)
 local GameConstants = require(ReplicatedStorage.Shared.GameConstants)
+local UIAnimationHelper = require(script.Parent.UIAnimationHelper)
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -203,10 +204,19 @@ HUDUpdate.OnClientEvent:Connect(function(changes)
 		local mins = math.floor(changes.timeLeft / 60)
 		local secs = changes.timeLeft % 60
 		Labels.timeLeft.Text = string.format("%02d:%02d", mins, secs)
+		-- Subtle pulse on time update
+		task.spawn(function()
+			UIAnimationHelper.pulseColor(Labels.timeLeft, Color3.fromRGB(255, 200, 100), 0.25, 1)
+		end)
 	end
 
 	if changes.score ~= nil then
 		Labels.score.Text = tostring(changes.score)
+		-- Bounce and pulse on score change
+		task.spawn(function()
+			UIAnimationHelper.pulseColor(Labels.score, Color3.fromRGB(100, 255, 100), 0.3, 1)
+			UIAnimationHelper.bounce(UI.score, 1.12, 0.35)
+		end)
 	end
 
 	if changes.completedSteps ~= nil or changes.stepNames ~= nil then
@@ -223,6 +233,10 @@ HUDUpdate.OnClientEvent:Connect(function(changes)
 				end
 				if i <= completedSteps then
 					obj.Icon.Image = IMG_COMPLETE
+					-- Animate completed step with bounce
+					task.spawn(function()
+						UIAnimationHelper.bounce(obj, 1.1, 0.25)
+					end)
 				elseif i == completedSteps + 1 then
 					obj.Icon.Image = IMG_IN_PROGRESS
 				else
