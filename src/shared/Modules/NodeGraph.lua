@@ -23,6 +23,9 @@ local Logger           = require(ReplicatedStorage:WaitForChild("Shared"):WaitFo
 local NPC_NODES_ROOT_NAME = "NPC_Nodes"
 local NEIGHBOR_RADIUS     = 12   -- studs: same-floor node connection radius
 local STAIR_RADIUS        = 22   -- studs: cross-floor connection radius via staircase nodes
+local LOS_HEIGHT_OFFSET   = Vector3.new(0, 2.5, 0)
+local MAX_RAYCAST_PASSES  = 12
+local findNodesRoot
 
 -- ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -39,6 +42,86 @@ local function findChildAgnostic(parent, targetName)
 		if normalizeName(child.Name) == needle then return child end
 	end
 	return nil
+end
+
+local function hasDoorPassModifier(inst)
+	local current = inst
+	while current do
+		local modifier = current:FindFirstChild("DoorPathfindingModifier")
+		if modifier and modifier:IsA("PathfindingModifier") and modifier.Label == "DoorPass" then
+			return true
+		end
+		current = current.Parent
+	end
+	return false
+end
+
+local function isDoorLike(inst)
+	local current = inst
+	while current do
+		if current.GetAttribute and current:GetAttribute("DoorType") ~= nil then
+			return true
+		end
+		if current:FindFirstChild("ToggleDoor") or current:FindFirstChild("OpenDoorEvent") then
+			return true
+		end
+		current = current.Parent
+	end
+	return false
+end
+
+local function isIgnoredHit(inst)
+	if not inst then return true end
+	local nodesRoot = findNodesRoot()
+	if nodesRoot and inst:IsDescendantOf(nodesRoot) then
+		return true
+	end
+	if inst:IsA("BasePart") and not inst.CanCollide then
+		return true
+	end
+	return false
+end
+
+local function isSegmentNavigable(fromPos, toPos, extraIgnore)
+	local origin = fromPos + LOS_HEIGHT_OFFSET
+	local target = toPos + LOS_HEIGHT_OFFSET
+	local direction = target - origin
+	if direction.Magnitude <= 0.05 then
+		return true
+	end
+
+	local ignore = {}
+	local nodesRoot = findNodesRoot()
+	if nodesRoot then
+		table.insert(ignore, nodesRoot)
+	end
+	if extraIgnore then
+		for _, inst in ipairs(extraIgnore) do
+			table.insert(ignore, inst)
+		end
+	end
+
+	for _ = 1, MAX_RAYCAST_PASSES do
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = ignore
+		local result = workspace:Raycast(origin, direction, params)
+		if not result then
+			return true
+		end
+
+		local hit = result.Instance
+		if hasDoorPassModifier(hit) or isDoorLike(hit) then
+			return true
+		end
+		if isIgnoredHit(hit) then
+			table.insert(ignore, hit)
+		else
+			return false
+		end
+	end
+
+	return false
 end
 
 -- ── Floor info parser ──────────────────────────────────────────────────────
@@ -86,7 +169,7 @@ end
 local buildingCache  = {}
 local staleBuildings = {}
 
-local function findNodesRoot()
+function findNodesRoot()
 	return workspace:FindFirstChild(NPC_NODES_ROOT_NAME)
 end
 
@@ -176,6 +259,8 @@ local function buildGraphForBuilding(buildingName)
 			local floorInfo = parseFloorInfo(floorFolder.Name)
 			for _, descendant in ipairs(floorFolder:GetDescendants()) do
 				if descendant:IsA("BasePart") then
+					descendant.CanCollide = false
+					descendant.CanTouch = false
 					table.insert(nodes, {
 						inst      = descendant,
 						floorInfo = floorInfo,
@@ -207,7 +292,7 @@ local function buildGraphForBuilding(buildingName)
 		for j = i + 1, #nodes do
 			local b    = nodes[j]
 			local dist = (a.pos - b.pos).Magnitude
-			if nodesCanConnect(a, b, dist) then
+			if nodesCanConnect(a, b, dist) and isSegmentNavigable(a.pos, b.pos) then
 				table.insert(adjacency[i], { idx = j, cost = dist })
 				table.insert(adjacency[j], { idx = i, cost = dist })
 			end
@@ -303,6 +388,35 @@ local function getNearestNodeOnFloor(position, buildingName, floorName)
 	return getNearestNode(position, buildingName)
 end
 
+local function getNearestNavigableNode(position, buildingName, floorName, extraIgnore)
+	local graph = buildGraphForBuilding(buildingName)
+	if not graph or #graph.nodes == 0 then return nil end
+
+	local bestDist = math.huge
+	local bestIdx = nil
+	local fallbackDist = math.huge
+	local fallbackIdx = nil
+
+	for i, info in ipairs(graph.nodes) do
+		local floorOk = not floorName or info.floorInfo.bridges[floorName]
+		local d = (info.pos - position).Magnitude
+
+		if floorOk and d < fallbackDist then
+			fallbackDist = d
+			fallbackIdx = i
+		end
+
+		if floorOk and d < bestDist and isSegmentNavigable(position, info.pos, extraIgnore) then
+			bestDist = d
+			bestIdx = i
+		end
+	end
+
+	if bestIdx then return graph.nodes[bestIdx].inst end
+	if fallbackIdx then return graph.nodes[fallbackIdx].inst end
+	return getNearestNode(position, buildingName)
+end
+
 -- ── Public: floor query ────────────────────────────────────────────────────
 
 -- Returns the primary floor name for a given node BasePart, or nil.
@@ -394,10 +508,12 @@ end
 
 NodeGraph.getNearestNode        = getNearestNode
 NodeGraph.getNearestNodeOnFloor = getNearestNodeOnFloor
+NodeGraph.getNearestNavigableNode = getNearestNavigableNode
 NodeGraph.getPathFloor          = getPathFloor
 NodeGraph.isTransitionNode      = isTransitionNode
 NodeGraph.findPathBetweenNodes  = findPathBetweenNodes
 NodeGraph.markBuildingStale     = markBuildingStale
 NodeGraph.buildGraphForBuilding = buildGraphForBuilding
+NodeGraph.isSegmentNavigable    = isSegmentNavigable
 
 return NodeGraph

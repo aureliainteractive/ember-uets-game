@@ -38,6 +38,7 @@ local DOOR_DETECTION_RADIUS      = 16
 local DOOR_TRIGGER_DISTANCE      = 12
 local DOOR_DEBOUNCE_TIME         = 1.5
 local DOOR_SEGMENT_HEIGHT_TOLERANCE = 8
+local DOOR_ROUTE_SEARCH_RADIUS   = 34
 
 -- Crowd / anti-clumping
 local AUTO_OFFSET_RADIUS          = 2.25
@@ -351,6 +352,37 @@ function NPCWaypointFollower.start(npcModel)
 
 	-- Try to open the single closest eligible door within range.
 	-- `floorName = nil` skips floor filtering (used for staircase segments).
+	local function requestDoorOpen(doorModel, reason)
+		if not doorModel or not doorModel.Parent then
+			return false
+		end
+		if getDoorOpenState(doorModel) == true then
+			return true
+		end
+
+		if not doorDebounces[doorModel] then doorDebounces[doorModel] = {} end
+		local lastTriggered = doorDebounces[doorModel].lastTriggeredTime or 0
+		if tick() - lastTriggered < DOOR_DEBOUNCE_TIME then
+			return true
+		end
+
+		local openEvent = doorModel:FindFirstChild("OpenDoorEvent", true)
+		if not openEvent or not openEvent:IsA("BindableEvent") then
+			return false
+		end
+
+		doorDebounces[doorModel].lastTriggeredTime = tick()
+		doorDebounces[doorModel].openedByNpc = true
+		Logger.debug("NPC", string.format(
+			"%s requested door open%s: %s",
+			npcModel.Name,
+			reason and (" (" .. reason .. ")") or "",
+			doorModel.Name
+		))
+		openEvent:Fire()
+		return true
+	end
+
 	local function tryOpenNearbyDoors(floorName)
 		if humanoid.Health <= 0 then return end
 		local npcPos = rootPart.Position
@@ -372,12 +404,6 @@ function NPCWaypointFollower.start(npcModel)
 			if getDoorOpenState(doorModel) == true then continue end
 			if not doorMatchesFloor(doorModel, floorName) then continue end
 
-			if not doorDebounces[doorModel] then doorDebounces[doorModel] = {} end
-			if doorDebounces[doorModel].openedByNpc then continue end
-
-			local lastTriggered = doorDebounces[doorModel].lastTriggeredTime or 0
-			if tick() - lastTriggered < DOOR_DEBOUNCE_TIME then continue end
-
 			local openEvent = doorModel:FindFirstChild("OpenDoorEvent", true)
 			if not openEvent or not openEvent:IsA("BindableEvent") then continue end
 
@@ -389,13 +415,7 @@ function NPCWaypointFollower.start(npcModel)
 		end
 
 		if closestDoor and closestEvent and closestDistance <= DOOR_TRIGGER_DISTANCE then
-			doorDebounces[closestDoor].lastTriggeredTime = tick()
-			doorDebounces[closestDoor].openedByNpc = true
-			Logger.debug("NPC", string.format(
-				"%s requested door open: %s (%.0f studs)",
-				npcModel.Name, closestDoor.Name, closestDistance
-			))
-			closestEvent:Fire()
+			requestDoorOpen(closestDoor, string.format("%.0f studs", closestDistance))
 		end
 	end
 
@@ -429,12 +449,6 @@ function NPCWaypointFollower.start(npcModel)
 			if dist > DOOR_DETECTION_RADIUS then continue end
 			if getDoorOpenState(doorModel) == true then continue end
 
-			if not doorDebounces[doorModel] then doorDebounces[doorModel] = {} end
-			if doorDebounces[doorModel].openedByNpc then continue end
-
-			local lastTriggered = doorDebounces[doorModel].lastTriggeredTime or 0
-			if tick() - lastTriggered < DOOR_DEBOUNCE_TIME then continue end
-
 			local openEvent = doorModel:FindFirstChild("OpenDoorEvent", true)
 			if not openEvent or not openEvent:IsA("BindableEvent") then continue end
 
@@ -446,13 +460,40 @@ function NPCWaypointFollower.start(npcModel)
 		end
 
 		if bestDoor and bestEvent and bestDist <= DOOR_TRIGGER_DISTANCE then
-			doorDebounces[bestDoor].lastTriggeredTime = tick()
-			doorDebounces[bestDoor].openedByNpc = true
-			Logger.debug("NPC", string.format(
-				"%s requested door open on segment: %s", npcModel.Name, bestDoor.Name
-			))
-			bestEvent:Fire()
+			requestDoorOpen(bestDoor, "segment")
 		end
+	end
+
+	local function findDoorGatewayBetween(fromPos, toPos, floorName)
+		if tick() - doorCacheLastUpdate > DOOR_CACHE_UPDATE_INTERVAL then rebuildDoorCache() end
+
+		local bestDoor = nil
+		local bestScore = math.huge
+		local midpoint = (fromPos + toPos) * 0.5
+		local segMidY = midpoint.Y
+
+		for _, doorModel in ipairs(doorCache) do
+			if not doorModel or not doorModel.Parent then continue end
+			if not doorMatchesFloor(doorModel, floorName) then continue end
+
+			local doorPos = getDoorPosition(doorModel)
+			if not doorPos then continue end
+			if math.abs(doorPos.Y - segMidY) > DOOR_SEGMENT_HEIGHT_TOLERANCE * 2 then continue end
+
+			local segmentDist = segmentDistanceToPoint(fromPos, toPos, doorPos)
+			local endpointDist = math.min((doorPos - fromPos).Magnitude, (doorPos - toPos).Magnitude)
+			if segmentDist > DOOR_ROUTE_SEARCH_RADIUS and endpointDist > DOOR_ROUTE_SEARCH_RADIUS then
+				continue
+			end
+
+			local score = segmentDist * 2 + (doorPos - midpoint).Magnitude * 0.25 + endpointDist * 0.1
+			if score < bestScore then
+				bestScore = score
+				bestDoor = doorModel
+			end
+		end
+
+		return bestDoor, bestDoor and getDoorPosition(bestDoor) or nil
 	end
 
 	-- ─── Waypoint collection ──────────────────────────────────────────────────
@@ -600,6 +641,14 @@ function NPCWaypointFollower.start(npcModel)
 		local startPos = rootPart.Position
 		local canFallback = (allowFallback ~= false)
 
+		if not NodeGraph.isSegmentNavigable(rootPart.Position, goal, { npcModel }) then
+			local doorModel = findDoorGatewayBetween(rootPart.Position, goal, floorName)
+			if doorModel then
+				requestDoorOpen(doorModel, "route")
+				task.wait(0.75)
+			end
+		end
+
 		Logger.debug("NPC", string.format(
 			"%s: pathfinding from (%.1f, %.1f, %.1f) to (%.1f, %.1f, %.1f)",
 			npcModel.Name, startPos.X, startPos.Y, startPos.Z, goal.X, goal.Y, goal.Z
@@ -628,6 +677,10 @@ function NPCWaypointFollower.start(npcModel)
 			return ok, err
 		end
 
+		local function canUseDirectFallback()
+			return NodeGraph.isSegmentNavigable(rootPart.Position, goal, { npcModel })
+		end
+
 		while tick() < deadline do
 			if humanoid.Health <= 0 or not npcModel.Parent then return false end
 
@@ -642,16 +695,24 @@ function NPCWaypointFollower.start(npcModel)
 					loggedWait = true
 				end
 				if tick() - waitStart > PATHFINDING_SLOT_TIMEOUT then
-					if canFallback then
+					if canFallback and canUseDirectFallback() then
 						return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-slot-timeout")
 					end
-					Logger.warn("NPC", string.format(
-						"%s: pathfinding slot timeout; strict mode stop",
-						npcModel.Name
-					))
-					return false
+					if not canFallback then
+						Logger.warn("NPC", string.format(
+							"%s: pathfinding slot timeout; strict mode stop",
+							npcModel.Name
+						))
+						return false
+					end
+					break
 				end
 				task.wait(0.05)
+			end
+
+			if activePathComputes >= MAX_CONCURRENT_PATHS then
+				task.wait(0.1)
+				continue
 			end
 
 			activePathComputes += 1
@@ -684,7 +745,11 @@ function NPCWaypointFollower.start(npcModel)
 					npcModel.Name, tostring(not canFallback)
 				))
 				if canFallback then
-					return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-compute-timeout")
+					if canUseDirectFallback() then
+						return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-compute-timeout")
+					end
+					task.wait(0.1)
+					continue
 				end
 				return false
 			end
@@ -698,7 +763,10 @@ function NPCWaypointFollower.start(npcModel)
 					canFallback and "; falling back to direct move" or "; strict mode"
 				))
 				if canFallback then
-					return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-fallback")
+					if canUseDirectFallback() then
+						return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-fallback")
+					end
+					return false
 				end
 				return false
 			end
@@ -711,7 +779,10 @@ function NPCWaypointFollower.start(npcModel)
 					canFallback and "; falling back to direct move" or "; strict mode"
 				))
 				if canFallback then
-					return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-empty")
+					if canUseDirectFallback() then
+						return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-empty")
+					end
+					return false
 				end
 				return false
 			end
@@ -761,7 +832,10 @@ function NPCWaypointFollower.start(npcModel)
 		end
 
 		if canFallback then
-			return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-timeout")
+			if canUseDirectFallback() then
+				return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-timeout")
+			end
+			return false
 		end
 		Logger.warn("NPC", string.format(
 			"%s: pathfinding timed out; strict mode stop",
@@ -893,14 +967,13 @@ function NPCWaypointFollower.start(npcModel)
 		-- Seed currentNode from the NPC's starting floor. This is the "Primer Nodo"
 		-- in the route contract: spawn uses Roblox pathfinding to reach it, then
 		-- graph nodes are traversed with plain MoveTo.
-		local currentNode = NodeGraph.getNearestNodeOnFloor(rootPart.Position, buildingName, preferFloor)
-		if not currentNode then
-			currentNode = NodeGraph.getNearestNode(rootPart.Position, buildingName)
-		end
+		local currentNode = NodeGraph.getNearestNavigableNode(rootPart.Position, buildingName, preferFloor, { npcModel })
+			or NodeGraph.getNearestNodeOnFloor(rootPart.Position, buildingName, preferFloor)
+			or NodeGraph.getNearestNode(rootPart.Position, buildingName)
 
 		-- Spawn -> Primer Nodo: Pathfinding.
 		if currentNode and (rootPart.Position - currentNode.Position).Magnitude > ARRIVE_RADIUS then
-			if not moveUsingPathfinding(currentNode.Position, offset, nil, true) then
+			if not moveUsingPathfinding(currentNode.Position, nil, nil, true) then
 				Logger.warn("NPC", string.format(
 					"%s: movement from spawn to first node failed; stopping",
 					npcModel.Name
@@ -918,7 +991,7 @@ function NPCWaypointFollower.start(npcModel)
 		)
 
 		if firstPath and #firstPath > 0 then
-			if not moveAlongNodePath(firstPath, buildingName, preferFloor, offset) then
+			if not moveAlongNodePath(firstPath, buildingName, preferFloor, nil) then
 				Logger.warn("NPC", string.format(
 					"%s: node-chain movement to first waypoint node failed; stopping",
 					npcModel.Name
