@@ -10,7 +10,7 @@
 --     eventType     = "EarthquakeSimulation",
 --     count         = 20,
 --     walkSpeed     = 10,        -- optional, default 10
---     maxStartDelay = 8,         -- optional, seconds — spread NPC starts over this window
+--     maxStartDelay = 12,        -- optional, seconds — spread NPC starts over this window
 --     offsetRadius  = 2.5,       -- optional, studs — max random XZ offset per NPC
 --   })
 --
@@ -26,8 +26,8 @@ local NPCFollowerController = require(script.Parent:WaitForChild("NPCFollowerCon
 
 -- ─── CONFIG ─────────────────────────────────────────────────────────────
 
-local BATCH_SIZE = 25
-local BATCH_INTERVAL = 0.05
+local BATCH_SIZE = 8
+local BATCH_INTERVAL = 0.15
 local NPC_FOLDER_NAME = "SpawnedNPCs"
 local SPAWNS_FOLDER = "NPC_Spawns"
 local NPCS_FOLDER_NAME = "NPCs"
@@ -435,7 +435,7 @@ function NPCSpawner.spawn(config)
 	local event = config.eventType
 	local count = config.count or 100
 	local speed = config.walkSpeed or 10
-	local delayMax = config.maxStartDelay or 8
+	local delayMax = config.maxStartDelay or 12
 	local radius = config.offsetRadius or 2.5
 
 	local key = building .. "_" .. event
