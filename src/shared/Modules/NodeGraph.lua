@@ -124,6 +124,16 @@ local function isSegmentNavigable(fromPos, toPos, extraIgnore)
 	return false
 end
 
+local function isExactFloorNode(info, floorName)
+	return floorName ~= nil
+		and info.floorInfo.primary == floorName
+		and info.floorInfo.isTransition ~= true
+end
+
+local function isBridgeFloorNode(info, floorName)
+	return floorName ~= nil and info.floorInfo.bridges[floorName] == true
+end
+
 -- ── Floor info parser ──────────────────────────────────────────────────────
 -- Returns a table describing which floors a folder's nodes belong to.
 --
@@ -344,6 +354,8 @@ local function getNearestNode(position, buildingName, preferFloor)
 	local bestIdx    = nil
 	local preferDist = math.huge
 	local preferIdx  = nil
+	local bridgeDist = math.huge
+	local bridgeIdx = nil
 
 	for i, info in ipairs(graph.nodes) do
 		local d = (info.pos - position).Magnitude
@@ -351,13 +363,17 @@ local function getNearestNode(position, buildingName, preferFloor)
 			bestDist = d
 			bestIdx  = i
 		end
-		if preferFloor and info.floorInfo.bridges[preferFloor] and d < preferDist then
+		if isExactFloorNode(info, preferFloor) and d < preferDist then
 			preferDist = d
 			preferIdx  = i
+		elseif isBridgeFloorNode(info, preferFloor) and d < bridgeDist then
+			bridgeDist = d
+			bridgeIdx = i
 		end
 	end
 
 	if preferIdx then return graph.nodes[preferIdx].inst end
+	if bridgeIdx then return graph.nodes[bridgeIdx].inst end
 	return graph.nodes[bestIdx] and graph.nodes[bestIdx].inst or nil
 end
 
@@ -369,21 +385,24 @@ local function getNearestNodeOnFloor(position, buildingName, floorName)
 	local graph = buildGraphForBuilding(buildingName)
 	if not graph or #graph.nodes == 0 then return nil end
 
-	local bestDist = math.huge
-	local bestIdx  = nil
+	local exactDist = math.huge
+	local exactIdx = nil
+	local bridgeDist = math.huge
+	local bridgeIdx = nil
 
 	for i, info in ipairs(graph.nodes) do
-		-- Accept both regular floor nodes and staircase nodes bridging this floor
-		if info.floorInfo.bridges[floorName] then
-			local d = (info.pos - position).Magnitude
-			if d < bestDist then
-				bestDist = d
-				bestIdx  = i
-			end
+		local d = (info.pos - position).Magnitude
+		if isExactFloorNode(info, floorName) and d < exactDist then
+			exactDist = d
+			exactIdx = i
+		elseif isBridgeFloorNode(info, floorName) and d < bridgeDist then
+			bridgeDist = d
+			bridgeIdx = i
 		end
 	end
 
-	if bestIdx then return graph.nodes[bestIdx].inst end
+	if exactIdx then return graph.nodes[exactIdx].inst end
+	if bridgeIdx then return graph.nodes[bridgeIdx].inst end
 	-- Fallback: nearest node in any floor
 	return getNearestNode(position, buildingName)
 end
@@ -392,13 +411,17 @@ local function getNearestNavigableNode(position, buildingName, floorName, extraI
 	local graph = buildGraphForBuilding(buildingName)
 	if not graph or #graph.nodes == 0 then return nil end
 
-	local bestDist = math.huge
-	local bestIdx = nil
+	local exactBestDist = math.huge
+	local exactBestIdx = nil
+	local bridgeBestDist = math.huge
+	local bridgeBestIdx = nil
 	local fallbackDist = math.huge
 	local fallbackIdx = nil
 
 	for i, info in ipairs(graph.nodes) do
-		local floorOk = not floorName or info.floorInfo.bridges[floorName]
+		local exactOk = not floorName or isExactFloorNode(info, floorName)
+		local bridgeOk = floorName and isBridgeFloorNode(info, floorName)
+		local floorOk = exactOk or bridgeOk
 		local d = (info.pos - position).Magnitude
 
 		if floorOk and d < fallbackDist then
@@ -406,13 +429,17 @@ local function getNearestNavigableNode(position, buildingName, floorName, extraI
 			fallbackIdx = i
 		end
 
-		if floorOk and d < bestDist and isSegmentNavigable(position, info.pos, extraIgnore) then
-			bestDist = d
-			bestIdx = i
+		if exactOk and d < exactBestDist and isSegmentNavigable(position, info.pos, extraIgnore) then
+			exactBestDist = d
+			exactBestIdx = i
+		elseif bridgeOk and d < bridgeBestDist and isSegmentNavigable(position, info.pos, extraIgnore) then
+			bridgeBestDist = d
+			bridgeBestIdx = i
 		end
 	end
 
-	if bestIdx then return graph.nodes[bestIdx].inst end
+	if exactBestIdx then return graph.nodes[exactBestIdx].inst end
+	if bridgeBestIdx then return graph.nodes[bridgeBestIdx].inst end
 	if fallbackIdx then return graph.nodes[fallbackIdx].inst end
 	return getNearestNode(position, buildingName)
 end
@@ -451,6 +478,11 @@ local function findPathBetweenNodes(startInst, goalInst, buildingName)
 	local startIdx = graph.instToIndex[startInst]
 	local goalIdx  = graph.instToIndex[goalInst]
 	if not startIdx or not goalIdx then return nil end
+	local sameExactFloor = graph.nodes[startIdx]
+		and graph.nodes[goalIdx]
+		and graph.nodes[startIdx].floorInfo.primary == graph.nodes[goalIdx].floorInfo.primary
+		and graph.nodes[startIdx].floorInfo.isTransition ~= true
+		and graph.nodes[goalIdx].floorInfo.isTransition ~= true
 
 	local openSet  = { [startIdx] = true }
 	local cameFrom = {}
@@ -491,6 +523,9 @@ local function findPathBetweenNodes(startInst, goalInst, buildingName)
 		openSet[current] = nil
 		for _, edge in ipairs(graph.adjacency[current] or {}) do
 			local nb  = edge.idx
+			if sameExactFloor and graph.nodes[nb] and graph.nodes[nb].floorInfo.isTransition then
+				continue
+			end
 			local tg  = gScore[current] + edge.cost
 			if tg < gScore[nb] then
 				cameFrom[nb] = current
