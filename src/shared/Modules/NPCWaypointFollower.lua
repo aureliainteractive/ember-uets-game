@@ -47,9 +47,11 @@ local STUCK_MOVEMENT_EPSILON      = 0.05
 local STUCK_NUDGE_RADIUS          = 2.0
 
 local PATHFINDING_TIMEOUT         = 18
-local MAX_CONCURRENT_PATHS        = 4
+local MAX_CONCURRENT_PATHS        = 8
 local PATHFINDING_SLOT_LOG_DELAY  = 1.5
 local PATH_CACHE_TTL              = 120
+local MAX_PATH_WAYPOINTS          = 45
+local MAX_SPAWN_PATH_WAYPOINTS    = 28
 
 -- ─── Global door cache ────────────────────────────────────────────────────────
 
@@ -682,13 +684,18 @@ function NPCWaypointFollower.start(npcModel)
 		return false
 	end
 
-	local function moveUsingPathfinding(targetPos, offset, floorName, allowFallback, explicitCacheKey)
+	local function moveUsingPathfinding(targetPos, offset, floorName, allowFallback, explicitCacheKey, maxWaypoints)
 		local effectiveOffset = offset or Vector3.zero
 		local goal = targetPos + effectiveOffset
 		local deadline = tick() + PATHFINDING_TIMEOUT
 		local startPos = rootPart.Position
 		local canFallback = (allowFallback ~= false)
 		local cacheKey = makePathCacheKey(startPos, goal, floorName, explicitCacheKey)
+		local waypointLimit = maxWaypoints or MAX_PATH_WAYPOINTS
+
+		if NodeGraph.isSegmentNavigable(rootPart.Position, goal, { npcModel }) then
+			return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "direct-visible")
+		end
 
 		Logger.debug("NPC", string.format(
 			"%s: pathfinding from (%.1f, %.1f, %.1f) to (%.1f, %.1f, %.1f)",
@@ -767,6 +774,7 @@ function NPCWaypointFollower.start(npcModel)
 					if canFallback and canUseDirectFallback() then
 						return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-slot-deadline")
 					end
+					pathCache[cacheKey] = nil
 					return false
 				end
 				task.wait(0.1)
@@ -811,8 +819,8 @@ function NPCWaypointFollower.start(npcModel)
 						pathCache[cacheKey] = nil
 						return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-fallback")
 					end
-					task.wait(0.25)
-					continue
+					pathCache[cacheKey] = nil
+					return false
 				end
 				pathCache[cacheKey] = nil
 				return false
@@ -830,9 +838,18 @@ function NPCWaypointFollower.start(npcModel)
 						pathCache[cacheKey] = nil
 						return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-empty")
 					end
-					task.wait(0.25)
-					continue
+					pathCache[cacheKey] = nil
+					return false
 				end
+				pathCache[cacheKey] = nil
+				return false
+			end
+
+			if #waypoints > waypointLimit then
+				Logger.debug("NPC", string.format(
+					"%s: path rejected with %d waypoints (limit=%d)",
+					npcModel.Name, #waypoints, waypointLimit
+				))
 				pathCache[cacheKey] = nil
 				return false
 			end
@@ -969,7 +986,8 @@ function NPCWaypointFollower.start(npcModel)
 			offset,
 			nil,
 			true,
-			string.format("waypoint:%s:%s", tostring(npcModel:GetAttribute("BuildingName")), wp:GetFullName())
+			string.format("waypoint:%s:%s", tostring(npcModel:GetAttribute("BuildingName")), wp:GetFullName()),
+			MAX_PATH_WAYPOINTS
 		)
 	end
 
@@ -1055,7 +1073,7 @@ function NPCWaypointFollower.start(npcModel)
 				tostring(spawnKey or "unknown"),
 				currentNode:GetFullName()
 			)
-			if not moveUsingPathfinding(currentNode.Position, nil, startFloor, true, firstNodeCacheKey) then
+			if not moveUsingPathfinding(currentNode.Position, nil, startFloor, true, firstNodeCacheKey, MAX_SPAWN_PATH_WAYPOINTS) then
 				Logger.warn("NPC", string.format(
 					"%s: movement from spawn to first node failed; stopping",
 					npcModel.Name
@@ -1095,7 +1113,7 @@ function NPCWaypointFollower.start(npcModel)
 			firstTargetNode and firstTargetNode:GetFullName() or "no-node",
 			firstWaypoint:GetFullName()
 		)
-		if not moveUsingPathfinding(firstWaypoint.Position, offset, targetFloor, true, firstWaypointCacheKey) then
+		if not moveUsingPathfinding(firstWaypoint.Position, offset, targetFloor, true, firstWaypointCacheKey, MAX_PATH_WAYPOINTS) then
 			Logger.warn("NPC", string.format(
 				"%s: movement from first waypoint node to %s failed; stopping",
 				npcModel.Name,
