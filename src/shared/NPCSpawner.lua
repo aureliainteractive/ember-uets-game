@@ -24,6 +24,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PhysicsService = game:GetService("PhysicsService")
 local NPCFollowerController = require(script.Parent:WaitForChild("NPCFollowerController"))
+local NPCWaypointFollower = require(script.Parent:WaitForChild("Modules"):WaitForChild("NPCWaypointFollower"))
 
 -- ─── CONFIG ─────────────────────────────────────────────────────────────
 
@@ -475,6 +476,10 @@ function NPCSpawner.spawn(config)
 	activeGroups[key] = group
 
 	task.spawn(function()
+		if config.prewarmRoutes ~= false then
+			NPCWaypointFollower.prewarmRoutes(building, event, spawns)
+		end
+
 		local spawned = 0
 
 		while spawned < count do

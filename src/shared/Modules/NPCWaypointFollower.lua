@@ -49,7 +49,7 @@ local STUCK_NUDGE_RADIUS          = 0.75
 local PATHFINDING_TIMEOUT         = 18
 local MAX_CONCURRENT_PATHS        = 8
 local PATHFINDING_SLOT_LOG_DELAY  = 1.5
-local PATH_CACHE_TTL              = 120
+local PATH_CACHE_TTL              = 3600
 local MAX_PATH_WAYPOINTS          = 90
 local MAX_SPAWN_PATH_WAYPOINTS    = 90
 
@@ -111,15 +111,7 @@ end
 local function makePathCacheKey(fromPos, toPos, floorName, explicitKey)
 	local step = 10
 	if explicitKey and explicitKey ~= "" then
-		return table.concat({
-			explicitKey,
-			quantizeCoord(fromPos.X, step),
-			quantizeCoord(fromPos.Y, step),
-			quantizeCoord(fromPos.Z, step),
-			quantizeCoord(toPos.X, step),
-			quantizeCoord(toPos.Y, step),
-			quantizeCoord(toPos.Z, step),
-		}, "|")
+		return explicitKey
 	end
 
 	return table.concat({
@@ -142,6 +134,115 @@ local function serializeWaypoints(waypoints)
 		}
 	end
 	return result
+end
+
+local function createDefaultPath()
+	return PathfindingService:CreatePath({
+		AgentRadius = 2,
+		AgentHeight = 5.5,
+		AgentCanJump = true,
+		AgentCanClimb = true,
+		WaypointSpacing = 4,
+		Costs = {
+			DoorPass = 1,
+		},
+	})
+end
+
+local function computePathIntoCache(fromPos, toPos, floorName, explicitKey, waypointLimit)
+	local cacheKey = makePathCacheKey(fromPos, toPos, floorName, explicitKey)
+	local cached = pathCache[cacheKey]
+	if cached and cached.status == "success" and tick() - cached.updatedAt <= PATH_CACHE_TTL then
+		return true, "cached", #cached.points
+	end
+
+	local path = createDefaultPath()
+	local ok, err = pcall(function()
+		path:ComputeAsync(fromPos, toPos)
+	end)
+	if not ok or path.Status ~= Enum.PathStatus.Success then
+		pathCache[cacheKey] = nil
+		return false, tostring(err or path.Status), 0
+	end
+
+	local waypoints = path:GetWaypoints()
+	local limit = waypointLimit or MAX_PATH_WAYPOINTS
+	if #waypoints == 0 or #waypoints > limit then
+		pathCache[cacheKey] = nil
+		return false, string.format("waypoints=%d limit=%d", #waypoints, limit), #waypoints
+	end
+
+	pathCache[cacheKey] = {
+		status = "success",
+		updatedAt = tick(),
+		points = serializeWaypoints(waypoints),
+	}
+	return true, "computed", #waypoints
+end
+
+local function resolveWaypointsRoot()
+	local preferred = workspace:FindFirstChild("NPC_Waypoints")
+	if preferred then return preferred end
+	local legacy = workspace:FindFirstChild("Waypoints")
+	if legacy then Logger.warn("NPC", "Using legacy waypoint root Workspace.Waypoints") return legacy end
+	Logger.warn("NPC", "No waypoint root found (NPC_Waypoints or Waypoints)")
+	return nil
+end
+
+local function parseWaypointIndex(name)
+	return tonumber(name:match("^Waypoint[_%-]?(%d+)$")) or tonumber(name:match("^WP(%d+)$"))
+end
+
+local function resolveWaypointFloorName(waypointPart)
+	if not waypointPart then return nil end
+	local current = waypointPart
+	while current do
+		local attr = current:GetAttribute("FloorName")
+		if type(attr) == "string" and attr ~= "" then
+			return attr
+		end
+		local n = current.Name
+		local num = n:match("^[Ff]loor(%d+)$")
+		if num then
+			return "Floor" .. num
+		end
+		current = current.Parent
+	end
+	return nil
+end
+
+local function collectWaypointParts(buildingName, eventType)
+	local root = resolveWaypointsRoot()
+	if not root then return {} end
+
+	local buildingFolder = findChildAgnostic(root, buildingName)
+	if not buildingFolder then
+		Logger.warn("NPC", "Waypoint building folder not found: " .. tostring(buildingName))
+		return {}
+	end
+
+	local eventFolder = findChildAgnostic(buildingFolder, eventType)
+	if not eventFolder then
+		Logger.warn("NPC", "Waypoint event folder not found: " .. tostring(eventType))
+		return {}
+	end
+
+	local list = {}
+	for _, descendant in ipairs(eventFolder:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			local n = parseWaypointIndex(descendant.Name)
+			if n then
+				table.insert(list, {
+					index = n,
+					part = descendant,
+					floorName = resolveWaypointFloorName(descendant),
+				})
+			end
+		end
+	end
+
+	table.sort(list, function(a, b) return a.index < b.index end)
+	return list
 end
 
 local function getDoorPosition(doorModel)
@@ -306,6 +407,118 @@ workspace.DescendantAdded:Connect(function(descendant)
 	if descendant:IsA("RemoteEvent") and descendant.Name == "ToggleDoor" then shouldMark = true end
 	if shouldMark then doorCacheLastUpdate = 0 end
 end)
+
+function NPCWaypointFollower.prewarmRoutes(buildingName, eventType, spawnPoints)
+	if not buildingName or not eventType then
+		return { ok = 0, failed = 0, skipped = 0 }
+	end
+
+	rebuildDoorCache()
+	NodeGraph.buildGraphForBuilding(buildingName)
+
+	local waypoints = collectWaypointParts(buildingName, eventType)
+	if #waypoints == 0 then
+		return { ok = 0, failed = 0, skipped = 0 }
+	end
+
+	local okCount = 0
+	local failedCount = 0
+	local skippedCount = 0
+	local seen = {}
+	local firstEntry = waypoints[1]
+	local firstWaypoint = firstEntry.part
+
+	local function note(resultOk)
+		if resultOk then
+			okCount += 1
+		else
+			failedCount += 1
+		end
+	end
+
+	for _, spawn in ipairs(spawnPoints or {}) do
+		local spawnPart = spawn.part
+		local spawnPos = spawnPart and spawnPart.Position or (spawn.cframe and spawn.cframe.Position) or Vector3.new(0, 5, 0)
+		local spawnFloor = spawn.floorName
+		local spawnKey = spawnPart and spawnPart:GetFullName() or string.format("pos:%.1f,%.1f,%.1f", spawnPos.X, spawnPos.Y, spawnPos.Z)
+
+		local currentNode = NodeGraph.getNearestNavigableNode(spawnPos, buildingName, spawnFloor)
+			or NodeGraph.getNearestNodeOnFloor(spawnPos, buildingName, spawnFloor)
+			or NodeGraph.getNearestNode(spawnPos, buildingName)
+
+		if currentNode then
+			local key = string.format(
+				"spawn:%s:%s:%s:%s",
+				buildingName,
+				tostring(spawnFloor or "any"),
+				tostring(spawnKey or "unknown"),
+				currentNode:GetFullName()
+			)
+			if not seen[key] then
+				seen[key] = true
+				if NodeGraph.isSegmentNavigable(spawnPos, currentNode.Position) then
+					skippedCount += 1
+				else
+					local resultOk = computePathIntoCache(spawnPos, currentNode.Position, spawnFloor, key, MAX_SPAWN_PATH_WAYPOINTS)
+					note(resultOk)
+				end
+			end
+		end
+
+		local targetFloor = firstEntry.floorName or spawnFloor
+		local firstTargetNode = targetFloor
+			and NodeGraph.getNearestNodeOnFloor(firstWaypoint.Position, buildingName, targetFloor)
+			or NodeGraph.getNearestNode(firstWaypoint.Position, buildingName)
+		if firstTargetNode then
+			local key = string.format(
+				"first-waypoint:%s:%s:%s:%s",
+				buildingName,
+				tostring(targetFloor or "any"),
+				firstTargetNode:GetFullName(),
+				firstWaypoint:GetFullName()
+			)
+			if not seen[key] then
+				seen[key] = true
+				if NodeGraph.isSegmentNavigable(firstTargetNode.Position, firstWaypoint.Position) then
+					skippedCount += 1
+				else
+					local resultOk = computePathIntoCache(firstTargetNode.Position, firstWaypoint.Position, targetFloor, key, MAX_PATH_WAYPOINTS)
+					note(resultOk)
+				end
+			end
+		end
+	end
+
+	for index = 2, #waypoints do
+		local previous = waypoints[index - 1].part
+		local current = waypoints[index].part
+		local key = string.format("waypoint:%s:%s", tostring(buildingName), current:GetFullName())
+		if not seen[key] then
+			seen[key] = true
+			if NodeGraph.isSegmentNavigable(previous.Position, current.Position) then
+				skippedCount += 1
+			else
+				local resultOk = computePathIntoCache(previous.Position, current.Position, nil, key, MAX_PATH_WAYPOINTS)
+				note(resultOk)
+			end
+		end
+	end
+
+	Logger.debug("NPC", string.format(
+		"Prewarmed routes for %s/%s: ok=%d failed=%d skipped=%d",
+		tostring(buildingName),
+		tostring(eventType),
+		okCount,
+		failedCount,
+		skippedCount
+	))
+
+	return {
+		ok = okCount,
+		failed = failedCount,
+		skipped = skippedCount,
+	}
+end
 
 -- ─── Main Start Function ──────────────────────────────────────────────────────
 
