@@ -26,7 +26,7 @@ local NodeGraph = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild(
 -- ─── Constants ────────────────────────────────────────────────────────────────
 
 local ARRIVE_RADIUS    = 2.5   -- studs: "close enough" to a node / waypoint
-local MOVETO_TIMEOUT   = 12    -- seconds before giving up on a single MoveTo call
+local MOVETO_TIMEOUT   = 20    -- max seconds before giving up on a single MoveTo call
 local TICK_RATE        = 0.1   -- seconds between movement checks
 
 local WALK_ANIM_R6  = "rbxassetid://180426354"
@@ -34,11 +34,11 @@ local WALK_ANIM_R15 = "rbxassetid://507777826"
 local WALK_SPEED_THRESHOLD = 0.1
 
 -- Door interaction
-local DOOR_DETECTION_RADIUS      = 16
-local DOOR_TRIGGER_DISTANCE      = 12
+local DOOR_DETECTION_RADIUS      = 10
+local DOOR_TRIGGER_DISTANCE      = 6
 local DOOR_DEBOUNCE_TIME         = 1.5
 local DOOR_SEGMENT_HEIGHT_TOLERANCE = 8
-local DOOR_ROUTE_SEARCH_RADIUS   = 34
+local DOOR_ROUTE_SEARCH_RADIUS   = 18
 
 -- Crowd / anti-clumping
 local AUTO_OFFSET_RADIUS          = 2.25
@@ -630,8 +630,11 @@ function NPCWaypointFollower.start(npcModel)
 
 		humanoid:MoveTo(goal)
 
+		local distance = (rootPart.Position - goal).Magnitude
+		local speed = math.max(humanoid.WalkSpeed, 1)
+		local timeout = math.clamp(distance / speed + 3, 4, MOVETO_TIMEOUT)
 		local elapsed = 0
-		while elapsed < MOVETO_TIMEOUT do
+		while elapsed < timeout do
 			if humanoid.Health <= 0 then
 				conn:Disconnect()
 				return false
@@ -686,14 +689,6 @@ function NPCWaypointFollower.start(npcModel)
 		local startPos = rootPart.Position
 		local canFallback = (allowFallback ~= false)
 		local cacheKey = makePathCacheKey(startPos, goal, floorName, explicitCacheKey)
-
-		if not NodeGraph.isSegmentNavigable(rootPart.Position, goal, { npcModel }) then
-			local doorModel = findDoorGatewayBetween(rootPart.Position, goal, floorName)
-			if doorModel then
-				requestDoorOpen(doorModel, "route")
-				task.wait(0.75)
-			end
-		end
 
 		Logger.debug("NPC", string.format(
 			"%s: pathfinding from (%.1f, %.1f, %.1f) to (%.1f, %.1f, %.1f)",
@@ -880,6 +875,9 @@ function NPCWaypointFollower.start(npcModel)
 						"%s: moveTo waypoint %d failed; pos=(%.1f, %.1f, %.1f)",
 						npcModel.Name, nextWaypointIndex, wp.Position.X, wp.Position.Y, wp.Position.Z
 					))
+					blockedConn:Disconnect()
+					pathCache[cacheKey] = nil
+					return false
 				end
 				prevPos = wp.Position
 				nextWaypointIndex += 1

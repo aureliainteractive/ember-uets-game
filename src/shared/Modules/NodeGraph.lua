@@ -56,20 +56,6 @@ local function hasDoorPassModifier(inst)
 	return false
 end
 
-local function isDoorLike(inst)
-	local current = inst
-	while current do
-		if current.GetAttribute and current:GetAttribute("DoorType") ~= nil then
-			return true
-		end
-		if current:FindFirstChild("ToggleDoor") or current:FindFirstChild("OpenDoorEvent") then
-			return true
-		end
-		current = current.Parent
-	end
-	return false
-end
-
 local function isIgnoredHit(inst)
 	if not inst then return true end
 	local nodesRoot = findNodesRoot()
@@ -111,10 +97,7 @@ local function isSegmentNavigable(fromPos, toPos, extraIgnore)
 		end
 
 		local hit = result.Instance
-		if hasDoorPassModifier(hit) or isDoorLike(hit) then
-			return true
-		end
-		if isIgnoredHit(hit) then
+		if hasDoorPassModifier(hit) or isIgnoredHit(hit) then
 			table.insert(ignore, hit)
 		else
 			return false
