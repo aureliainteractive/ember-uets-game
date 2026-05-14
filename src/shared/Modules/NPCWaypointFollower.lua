@@ -408,10 +408,15 @@ workspace.DescendantAdded:Connect(function(descendant)
 	if shouldMark then doorCacheLastUpdate = 0 end
 end)
 
-function NPCWaypointFollower.prewarmRoutes(buildingName, eventType, spawnPoints)
+function NPCWaypointFollower.prewarmRoutes(buildingName, eventType, spawnPoints, options)
 	if not buildingName or not eventType then
 		return { ok = 0, failed = 0, skipped = 0 }
 	end
+	options = options or {}
+	local prewarmSpawnRoutes = options.spawnRoutes ~= false
+	local prewarmFirstWaypointRoutes = options.firstWaypointRoutes ~= false
+	local prewarmWaypointRoutes = options.waypointRoutes ~= false
+	local logProgress = options.logProgress ~= false
 
 	rebuildDoorCache()
 	NodeGraph.buildGraphForBuilding(buildingName)
@@ -427,6 +432,37 @@ function NPCWaypointFollower.prewarmRoutes(buildingName, eventType, spawnPoints)
 	local seen = {}
 	local firstEntry = waypoints[1]
 	local firstWaypoint = firstEntry.part
+	local totalEstimate = 0
+	if prewarmSpawnRoutes then
+		totalEstimate += #(spawnPoints or {})
+	end
+	if prewarmFirstWaypointRoutes then
+		totalEstimate += #(spawnPoints or {})
+	end
+	if prewarmWaypointRoutes then
+		totalEstimate += math.max(0, #waypoints - 1)
+	end
+	local processed = 0
+	local nextPercentLog = 0
+
+	local function reportProgress(force)
+		if not logProgress or totalEstimate <= 0 then return end
+		local percent = math.floor((processed / totalEstimate) * 100 + 0.5)
+		if force or percent >= nextPercentLog then
+			Logger.debug("NPC", string.format(
+				"Prewarm routes %s/%s: %d/%d (%d%%) ok=%d failed=%d skipped=%d",
+				tostring(buildingName),
+				tostring(eventType),
+				processed,
+				totalEstimate,
+				percent,
+				okCount,
+				failedCount,
+				skippedCount
+			))
+			nextPercentLog = math.min(100, percent + 5)
+		end
+	end
 
 	local function note(resultOk)
 		if resultOk then
@@ -434,6 +470,18 @@ function NPCWaypointFollower.prewarmRoutes(buildingName, eventType, spawnPoints)
 		else
 			failedCount += 1
 		end
+	end
+
+	if logProgress then
+		Logger.debug("NPC", string.format(
+			"Prewarming routes for %s/%s: estimated=%d spawn=%s firstWaypoint=%s waypointChain=%s",
+			tostring(buildingName),
+			tostring(eventType),
+			totalEstimate,
+			tostring(prewarmSpawnRoutes),
+			tostring(prewarmFirstWaypointRoutes),
+			tostring(prewarmWaypointRoutes)
+		))
 	end
 
 	for _, spawn in ipairs(spawnPoints or {}) do
@@ -446,7 +494,7 @@ function NPCWaypointFollower.prewarmRoutes(buildingName, eventType, spawnPoints)
 			or NodeGraph.getNearestNodeOnFloor(spawnPos, buildingName, spawnFloor)
 			or NodeGraph.getNearestNode(spawnPos, buildingName)
 
-		if currentNode then
+		if prewarmSpawnRoutes and currentNode then
 			local key = string.format(
 				"spawn:%s:%s:%s:%s",
 				buildingName,
@@ -464,12 +512,16 @@ function NPCWaypointFollower.prewarmRoutes(buildingName, eventType, spawnPoints)
 				end
 			end
 		end
+		if prewarmSpawnRoutes then
+			processed += 1
+			reportProgress(false)
+		end
 
 		local targetFloor = firstEntry.floorName or spawnFloor
 		local firstTargetNode = targetFloor
 			and NodeGraph.getNearestNodeOnFloor(firstWaypoint.Position, buildingName, targetFloor)
 			or NodeGraph.getNearestNode(firstWaypoint.Position, buildingName)
-		if firstTargetNode then
+		if prewarmFirstWaypointRoutes and firstTargetNode then
 			local key = string.format(
 				"first-waypoint:%s:%s:%s:%s",
 				buildingName,
@@ -487,22 +539,31 @@ function NPCWaypointFollower.prewarmRoutes(buildingName, eventType, spawnPoints)
 				end
 			end
 		end
-	end
-
-	for index = 2, #waypoints do
-		local previous = waypoints[index - 1].part
-		local current = waypoints[index].part
-		local key = string.format("waypoint:%s:%s", tostring(buildingName), current:GetFullName())
-		if not seen[key] then
-			seen[key] = true
-			if NodeGraph.isSegmentNavigable(previous.Position, current.Position) then
-				skippedCount += 1
-			else
-				local resultOk = computePathIntoCache(previous.Position, current.Position, nil, key, MAX_PATH_WAYPOINTS)
-				note(resultOk)
-			end
+		if prewarmFirstWaypointRoutes then
+			processed += 1
+			reportProgress(false)
 		end
 	end
+
+	if prewarmWaypointRoutes then
+		for index = 2, #waypoints do
+			local previous = waypoints[index - 1].part
+			local current = waypoints[index].part
+			local key = string.format("waypoint:%s:%s", tostring(buildingName), current:GetFullName())
+			if not seen[key] then
+				seen[key] = true
+				if NodeGraph.isSegmentNavigable(previous.Position, current.Position) then
+					skippedCount += 1
+				else
+					local resultOk = computePathIntoCache(previous.Position, current.Position, nil, key, MAX_PATH_WAYPOINTS)
+					note(resultOk)
+				end
+			end
+			processed += 1
+			reportProgress(false)
+		end
+	end
+	reportProgress(true)
 
 	Logger.debug("NPC", string.format(
 		"Prewarmed routes for %s/%s: ok=%d failed=%d skipped=%d",

@@ -477,7 +477,12 @@ function NPCSpawner.spawn(config)
 
 	task.spawn(function()
 		if config.prewarmRoutes ~= false then
-			NPCWaypointFollower.prewarmRoutes(building, event, spawns)
+			NPCWaypointFollower.prewarmRoutes(building, event, spawns, {
+				logProgress = config.prewarmLogProgress ~= false,
+				spawnRoutes = config.prewarmSpawnRoutes ~= false,
+				firstWaypointRoutes = config.prewarmFirstWaypointRoutes ~= false,
+				waypointRoutes = config.prewarmWaypointRoutes ~= false,
+			})
 		end
 
 		local spawned = 0
