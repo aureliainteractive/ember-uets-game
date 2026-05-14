@@ -6,7 +6,7 @@ local RunService = game:GetService("RunService")
 -- =========================
 -- CONFIG
 -- =========================
-local DAY_LENGTH_SECONDS = 30 -- un día completo (24h) dura esto en segundos
+local DAY_LENGTH_SECONDS = 150 -- un día completo (24h) dura esto en segundos
 local BLACKOUT_NIGHT_TIME = 0 -- hora forzada durante blackout (0 = medianoche)
 
 -- =========================
