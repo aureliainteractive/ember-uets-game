@@ -45,10 +45,10 @@ local STUCK_TIME_BEFORE_NUDGE     = 1.0
 local STUCK_MOVEMENT_EPSILON      = 0.05
 local STUCK_NUDGE_RADIUS          = 2.0
 
-local PATHFINDING_TIMEOUT         = 6
+local PATHFINDING_TIMEOUT         = 12
 local MAX_CONCURRENT_PATHS        = 4
-local PATHFINDING_SLOT_TIMEOUT    = 0.6
-local PATH_COMPUTE_TIMEOUT        = 2.5
+local PATHFINDING_SLOT_TIMEOUT    = 2.5
+local PATH_COMPUTE_TIMEOUT        = 5.0
 
 -- ─── Global door cache ────────────────────────────────────────────────────────
 
@@ -593,14 +593,6 @@ function NPCWaypointFollower.start(npcModel)
 		return false
 	end
 
-	local function hasLineOfSight(fromPos, toPos)
-		local params = RaycastParams.new()
-		params.FilterType = Enum.RaycastFilterType.Exclude
-		params.FilterDescendantsInstances = { npcModel }
-		local result = workspace:Raycast(fromPos, toPos - fromPos, params)
-		return result == nil
-	end
-
 	local function moveUsingPathfinding(targetPos, offset, floorName, allowFallback)
 		local effectiveOffset = offset or Vector3.zero
 		local goal = targetPos + effectiveOffset
@@ -705,7 +697,7 @@ function NPCWaypointFollower.start(npcModel)
 					tostring(path.Status),
 					canFallback and "; falling back to direct move" or "; strict mode"
 				))
-				if canFallback and hasLineOfSight(rootPart.Position, goal) then
+				if canFallback then
 					return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-fallback")
 				end
 				return false
@@ -718,7 +710,7 @@ function NPCWaypointFollower.start(npcModel)
 					npcModel.Name,
 					canFallback and "; falling back to direct move" or "; strict mode"
 				))
-				if canFallback and hasLineOfSight(rootPart.Position, goal) then
+				if canFallback then
 					return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-empty")
 				end
 				return false
@@ -908,9 +900,9 @@ function NPCWaypointFollower.start(npcModel)
 
 		-- Spawn -> Primer Nodo: Pathfinding.
 		if currentNode and (rootPart.Position - currentNode.Position).Magnitude > ARRIVE_RADIUS then
-			if not moveUsingPathfinding(currentNode.Position, offset, nil, false) then
+			if not moveUsingPathfinding(currentNode.Position, offset, nil, true) then
 				Logger.warn("NPC", string.format(
-					"%s: pathfinding from spawn to first node failed; stopping",
+					"%s: movement from spawn to first node failed; stopping",
 					npcModel.Name
 				))
 				return
@@ -941,9 +933,9 @@ function NPCWaypointFollower.start(npcModel)
 		end
 
 		-- Nodo cercano -> Primer Waypoint: Pathfinding.
-		if not moveUsingPathfinding(firstWaypoint.Position, offset, nil, false) then
+		if not moveUsingPathfinding(firstWaypoint.Position, offset, nil, true) then
 			Logger.warn("NPC", string.format(
-				"%s: pathfinding from first waypoint node to %s failed; stopping",
+				"%s: movement from first waypoint node to %s failed; stopping",
 				npcModel.Name,
 				firstWaypoint.Name
 			))
