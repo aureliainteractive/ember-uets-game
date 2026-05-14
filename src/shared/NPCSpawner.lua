@@ -475,6 +475,9 @@ function NPCSpawner.spawn(config)
 				if sp.floorName then
 					npc:SetAttribute("FloorName", sp.floorName)
 				end
+				if sp.part then
+					npc:SetAttribute("SpawnPointKey", sp.part:GetFullName())
+				end
 				npc:SetAttribute("EventType", event)
 				npc:SetAttribute("StartDelay", rng:NextNumber(0, delayMax))
 				npc:SetAttribute("PathingStarted", false)

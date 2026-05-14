@@ -47,8 +47,9 @@ local STUCK_MOVEMENT_EPSILON      = 0.05
 local STUCK_NUDGE_RADIUS          = 2.0
 
 local PATHFINDING_TIMEOUT         = 18
-local MAX_CONCURRENT_PATHS        = 2
-local PATHFINDING_SLOT_LOG_DELAY  = 0.35
+local MAX_CONCURRENT_PATHS        = 4
+local PATHFINDING_SLOT_LOG_DELAY  = 1.5
+local PATH_CACHE_TTL              = 120
 
 -- ─── Global door cache ────────────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ local doorCacheLastUpdate  = 0
 local doorCacheRebuilding = false
 local DOOR_CACHE_UPDATE_INTERVAL = 30
 local activePathComputes = 0
+local pathCache = {}
 
 local function isLikelyFloorName(name)
 	local text = tostring(name or "")
@@ -97,6 +99,46 @@ local function findChildAgnostic(parent, targetName)
 		if normalizeName(child.Name) == needle then return child end
 	end
 	return nil
+end
+
+local function quantizeCoord(value, step)
+	return math.floor((value / step) + 0.5) * step
+end
+
+local function makePathCacheKey(fromPos, toPos, floorName, explicitKey)
+	local step = 10
+	if explicitKey and explicitKey ~= "" then
+		return table.concat({
+			explicitKey,
+			quantizeCoord(fromPos.X, step),
+			quantizeCoord(fromPos.Y, step),
+			quantizeCoord(fromPos.Z, step),
+			quantizeCoord(toPos.X, step),
+			quantizeCoord(toPos.Y, step),
+			quantizeCoord(toPos.Z, step),
+		}, "|")
+	end
+
+	return table.concat({
+		tostring(floorName or "any"),
+		quantizeCoord(fromPos.X, step),
+		quantizeCoord(fromPos.Y, step),
+		quantizeCoord(fromPos.Z, step),
+		quantizeCoord(toPos.X, step),
+		quantizeCoord(toPos.Y, step),
+		quantizeCoord(toPos.Z, step),
+	}, "|")
+end
+
+local function serializeWaypoints(waypoints)
+	local result = {}
+	for index, waypoint in ipairs(waypoints) do
+		result[index] = {
+			position = waypoint.Position,
+			action = waypoint.Action,
+		}
+	end
+	return result
 end
 
 local function getDoorPosition(doorModel)
@@ -637,12 +679,13 @@ function NPCWaypointFollower.start(npcModel)
 		return false
 	end
 
-	local function moveUsingPathfinding(targetPos, offset, floorName, allowFallback)
+	local function moveUsingPathfinding(targetPos, offset, floorName, allowFallback, explicitCacheKey)
 		local effectiveOffset = offset or Vector3.zero
 		local goal = targetPos + effectiveOffset
 		local deadline = tick() + PATHFINDING_TIMEOUT
 		local startPos = rootPart.Position
 		local canFallback = (allowFallback ~= false)
+		local cacheKey = makePathCacheKey(startPos, goal, floorName, explicitCacheKey)
 
 		if not NodeGraph.isSegmentNavigable(rootPart.Position, goal, { npcModel }) then
 			local doorModel = findDoorGatewayBetween(rootPart.Position, goal, floorName)
@@ -660,6 +703,56 @@ function NPCWaypointFollower.start(npcModel)
 		local function canUseDirectFallback()
 			return NodeGraph.isSegmentNavigable(rootPart.Position, goal, { npcModel })
 		end
+
+		local function followCachedWaypoints(points, debugLabel)
+			local prevPos = rootPart.Position
+			for nextWaypointIndex = 2, #points do
+				if humanoid.Health <= 0 or not npcModel.Parent then return false end
+
+				local wp = points[nextWaypointIndex]
+				if wp.action == Enum.PathWaypointAction.Jump then
+					humanoid.Jump = true
+				end
+				local isLast = (nextWaypointIndex == #points)
+				local wpOffset = isLast and offset or nil
+				if not moveTo(wp.position, wpOffset, prevPos, wp.position, floorName, debugLabel) then
+					pathCache[cacheKey] = nil
+					return false
+				end
+				prevPos = wp.position
+			end
+			return true
+		end
+
+		local cached = pathCache[cacheKey]
+		if cached and cached.status == "success" and tick() - cached.updatedAt <= PATH_CACHE_TTL then
+			Logger.debug("NPC", string.format("%s: using cached path with %d waypoints", npcModel.Name, #cached.points))
+			return followCachedWaypoints(cached.points, "cached-path")
+		end
+
+		if cached and cached.status == "computing" then
+			local nextWaitLog = tick()
+			while tick() < deadline do
+				local latest = pathCache[cacheKey]
+				if not latest or latest.status ~= "computing" then
+					if latest and latest.status == "success" and tick() - latest.updatedAt <= PATH_CACHE_TTL then
+						Logger.debug("NPC", string.format("%s: using shared path with %d waypoints", npcModel.Name, #latest.points))
+						return followCachedWaypoints(latest.points, "shared-path")
+					end
+					break
+				end
+				if tick() >= nextWaitLog then
+					Logger.debug("NPC", string.format("%s: waiting for shared path", npcModel.Name))
+					nextWaitLog = tick() + PATHFINDING_SLOT_LOG_DELAY
+				end
+				task.wait(0.1)
+			end
+		end
+
+		pathCache[cacheKey] = {
+			status = "computing",
+			updatedAt = tick(),
+		}
 
 		while tick() < deadline do
 			if humanoid.Health <= 0 or not npcModel.Parent then return false end
@@ -720,11 +813,13 @@ function NPCWaypointFollower.start(npcModel)
 				))
 				if canFallback then
 					if canUseDirectFallback() then
+						pathCache[cacheKey] = nil
 						return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-fallback")
 					end
 					task.wait(0.25)
 					continue
 				end
+				pathCache[cacheKey] = nil
 				return false
 			end
 
@@ -737,11 +832,13 @@ function NPCWaypointFollower.start(npcModel)
 				))
 				if canFallback then
 					if canUseDirectFallback() then
+						pathCache[cacheKey] = nil
 						return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-empty")
 					end
 					task.wait(0.25)
 					continue
 				end
+				pathCache[cacheKey] = nil
 				return false
 			end
 
@@ -749,6 +846,11 @@ function NPCWaypointFollower.start(npcModel)
 				"%s: path ok with %d waypoints (status=%s)",
 				npcModel.Name, #waypoints, tostring(path.Status)
 			))
+			pathCache[cacheKey] = {
+				status = "success",
+				updatedAt = tick(),
+				points = serializeWaypoints(waypoints),
+			}
 
 			local nextWaypointIndex = 2
 			local blockedAhead = false
@@ -791,10 +893,13 @@ function NPCWaypointFollower.start(npcModel)
 
 		if canFallback then
 			if canUseDirectFallback() then
+				pathCache[cacheKey] = nil
 				return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-timeout")
 			end
+			pathCache[cacheKey] = nil
 			return false
 		end
+		pathCache[cacheKey] = nil
 		Logger.warn("NPC", string.format(
 			"%s: pathfinding timed out; strict mode stop",
 			npcModel.Name
@@ -856,7 +961,18 @@ function NPCWaypointFollower.start(npcModel)
 	end
 
 	local function moveDirectlyToWaypoint(wp, offset, debugLabel)
-		return moveTo(wp.Position, offset, rootPart.Position, wp.Position, nil, debugLabel)
+		local goal = wp.Position + (offset or Vector3.zero)
+		if NodeGraph.isSegmentNavigable(rootPart.Position, goal, { npcModel }) then
+			return moveTo(wp.Position, offset, rootPart.Position, wp.Position, nil, debugLabel)
+		end
+
+		return moveUsingPathfinding(
+			wp.Position,
+			offset,
+			nil,
+			true,
+			string.format("waypoint:%s:%s", tostring(npcModel:GetAttribute("BuildingName")), wp:GetFullName())
+		)
 	end
 
 	local function holdAtWaypoint(wp, offset)
@@ -894,6 +1010,7 @@ function NPCWaypointFollower.start(npcModel)
 		local startDelay    = npcModel:GetAttribute("StartDelay") or 0
 		local rawOffset     = npcModel:GetAttribute("PositionOffset")
 		local preferFloor   = npcModel:GetAttribute("FloorName")
+		local spawnKey      = npcModel:GetAttribute("SpawnPointKey")
 
 		if not buildingName or not eventType then
 			Logger.warn("NPC", "Missing BuildingName or EventType on " .. npcModel.Name)
@@ -921,18 +1038,26 @@ function NPCWaypointFollower.start(npcModel)
 
 		local firstEntry = waypoints[1]
 		local firstWaypoint = firstEntry.part
-		local routeFloor = firstEntry.floorName or preferFloor
+		local startFloor = preferFloor
+		local targetFloor = firstEntry.floorName or preferFloor
 
-		-- Seed currentNode on the waypoint floor. This is the "Primer Nodo" in
-		-- the route contract: spawn uses Roblox pathfinding to reach it, then
-		-- graph nodes are traversed with plain MoveTo.
-		local currentNode = NodeGraph.getNearestNavigableNode(rootPart.Position, buildingName, routeFloor, { npcModel })
-			or NodeGraph.getNearestNodeOnFloor(rootPart.Position, buildingName, routeFloor)
+		-- Seed currentNode on the NPC's spawn floor. This is the "Primer Nodo"
+		-- in the route contract: spawn uses Roblox pathfinding to leave the room,
+		-- then graph nodes handle same-floor movement and floor transitions.
+		local currentNode = NodeGraph.getNearestNavigableNode(rootPart.Position, buildingName, startFloor, { npcModel })
+			or NodeGraph.getNearestNodeOnFloor(rootPart.Position, buildingName, startFloor)
 			or NodeGraph.getNearestNode(rootPart.Position, buildingName)
 
 		-- Spawn -> Primer Nodo: Pathfinding.
 		if currentNode and (rootPart.Position - currentNode.Position).Magnitude > ARRIVE_RADIUS then
-			if not moveUsingPathfinding(currentNode.Position, nil, routeFloor, true) then
+			local firstNodeCacheKey = string.format(
+				"spawn:%s:%s:%s:%s",
+				buildingName,
+				tostring(startFloor or "any"),
+				tostring(spawnKey or "unknown"),
+				currentNode:GetFullName()
+			)
+			if not moveUsingPathfinding(currentNode.Position, nil, startFloor, true, firstNodeCacheKey) then
 				Logger.warn("NPC", string.format(
 					"%s: movement from spawn to first node failed; stopping",
 					npcModel.Name
@@ -946,11 +1071,11 @@ function NPCWaypointFollower.start(npcModel)
 			currentNode,
 			firstWaypoint.Position,
 			buildingName,
-			routeFloor
+			targetFloor
 		)
 
 		if firstPath and #firstPath > 0 then
-			if not moveAlongNodePath(firstPath, buildingName, routeFloor, nil) then
+			if not moveAlongNodePath(firstPath, buildingName, startFloor, nil) then
 				Logger.warn("NPC", string.format(
 					"%s: node-chain movement to first waypoint node failed; stopping",
 					npcModel.Name
@@ -965,7 +1090,14 @@ function NPCWaypointFollower.start(npcModel)
 		end
 
 		-- Nodo cercano -> Primer Waypoint: Pathfinding.
-		if not moveUsingPathfinding(firstWaypoint.Position, offset, routeFloor, true) then
+		local firstWaypointCacheKey = string.format(
+			"first-waypoint:%s:%s:%s:%s",
+			buildingName,
+			tostring(targetFloor or "any"),
+			firstTargetNode and firstTargetNode:GetFullName() or "no-node",
+			firstWaypoint:GetFullName()
+		)
+		if not moveUsingPathfinding(firstWaypoint.Position, offset, targetFloor, true, firstWaypointCacheKey) then
 			Logger.warn("NPC", string.format(
 				"%s: movement from first waypoint node to %s failed; stopping",
 				npcModel.Name,

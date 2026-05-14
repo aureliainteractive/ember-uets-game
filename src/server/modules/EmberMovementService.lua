@@ -75,6 +75,11 @@ local function pollOnce()
 	end
 end
 
+local function is502Error(err)
+	local message = tostring(err)
+	return string.find(message, "502", 1, true) ~= nil
+end
+
 local function pollLoop()
 	while pollRunning do
 		local now = os.clock()
@@ -85,7 +90,9 @@ local function pollLoop()
 				if currentMovement ~= "idle" then
 					setMovement("idle")
 				end
-				Logger.warn("Movement", "EMBER movement poll failed: " .. tostring(err))
+				if not is502Error(err) then
+					Logger.warn("Movement", "EMBER movement poll failed: " .. tostring(err))
+				end
 				task.wait(0.8)
 			end
 		end
