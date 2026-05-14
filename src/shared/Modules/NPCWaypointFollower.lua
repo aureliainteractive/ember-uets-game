@@ -9,8 +9,10 @@
 --   floors via Floor1u2 staircase folders.
 -- • resolveWaypointFloor has been removed.  The active floor is now derived
 --   from whichever node the NPC currently occupies (NodeGraph.getPathFloor).
--- • Transit waypoints now do a final precise step to the actual waypoint
---   position after graph traversal, so NPCs land exactly on their targets.
+-- • NPCs now follow the route contract:
+--   Spawn -> first node via PathfindingService, node chain via MoveTo,
+--   nearest node -> first waypoint via PathfindingService, remaining waypoints
+--   via MoveTo.
 -- • segmentFloor for door detection is derived from the node being traversed;
 --   staircase nodes (isTransitionNode = true) skip floor-based door filtering
 --   so doors at staircase landings are not accidentally excluded.
@@ -55,11 +57,19 @@ local doorCacheLastUpdate  = 0
 local DOOR_CACHE_UPDATE_INTERVAL = 5
 local activePathComputes = 0
 
+local function isLikelyFloorName(name)
+	local text = tostring(name or "")
+	return text:match("^[Ff]loor%d+") ~= nil or text:match("^[Pp]iso%d+") ~= nil
+end
+
 local function getDoorFloorName(doorModel)
 	local current = doorModel
 	while current do
 		if current.Parent and current.Parent.Name == "Doors" then
-			return current.Name
+			if current ~= doorModel or isLikelyFloorName(current.Name) then
+				return current.Name
+			end
+			return nil
 		end
 		current = current.Parent
 	end
@@ -85,6 +95,31 @@ local function findChildAgnostic(parent, targetName)
 	for _, child in ipairs(parent:GetChildren()) do
 		if normalizeName(child.Name) == needle then return child end
 	end
+	return nil
+end
+
+local function getDoorPosition(doorModel)
+	if not doorModel or not doorModel.Parent then
+		return nil
+	end
+
+	local proxy = doorModel:FindFirstChild("DoorPathfindingProxy", true)
+	if proxy and proxy:IsA("BasePart") then
+		return proxy.Position
+	end
+
+	local doorPart = doorModel:FindFirstChild("Door", true)
+	if doorPart and doorPart:IsA("BasePart") then
+		return doorPart.Position
+	end
+
+	local ok, pivot = pcall(function()
+		return doorModel:GetPivot()
+	end)
+	if ok and pivot then
+		return pivot.Position
+	end
+
 	return nil
 end
 
@@ -115,7 +150,7 @@ local function rebuildDoorCache()
 			modifier.Parent = proxy
 		end
 
-		local doorPart = doorModel:FindFirstChild("Door")
+		local doorPart = doorModel:FindFirstChild("Door", true)
 		if doorPart and doorPart:IsA("BasePart") then
 			proxy.CFrame = doorPart.CFrame
 			proxy.Size = doorPart.Size + Vector3.new(1, 1, 1)
@@ -329,8 +364,7 @@ function NPCWaypointFollower.start(npcModel)
 		for _, doorModel in ipairs(doorCache) do
 			if not doorModel or not doorModel.Parent then continue end
 
-			local ok, pivot = pcall(function() return doorModel:GetPivot() end)
-			local doorPos   = ok and pivot and pivot.Position or nil
+			local doorPos = getDoorPosition(doorModel)
 			if not doorPos then continue end
 
 			local distance = (doorPos - npcPos).Magnitude
@@ -385,8 +419,7 @@ function NPCWaypointFollower.start(npcModel)
 		for _, doorModel in ipairs(doorCache) do
 			if not doorModel or not doorModel.Parent then continue end
 
-			local ok, pivot = pcall(function() return doorModel:GetPivot() end)
-			local doorPos   = ok and pivot and pivot.Position or nil
+			local doorPos = getDoorPosition(doorModel)
 			if not doorPos then continue end
 
 			if not doorMatchesFloor(doorModel, floorName) then continue end
@@ -771,35 +804,55 @@ function NPCWaypointFollower.start(npcModel)
 		return path, targetNode
 	end
 
-	-- ─── Waypoint behaviour handlers ─────────────────────────────────────────
-
-	local function handleHold(wp, offset, floorName)
-		if moveUsingPathfinding(wp.Position, offset, floorName, false) == false then
-			Logger.warn("NPC", string.format(
-				"%s: pathfinding to Hold waypoint failed; stopping",
-				npcModel.Name
-			))
-			return false
+	local function moveAlongNodePath(path, buildingName, preferFloor, offset)
+		if not path or #path == 0 then
+			return true
 		end
-		if humanoid.Health <= 0 then return end
+
+		for i, nodeInst in ipairs(path) do
+			if not npcModel.Parent or humanoid.Health <= 0 then
+				return false
+			end
+
+			local segStart = (i == 1) and rootPart.Position or path[i - 1].Position
+
+			local segFloor
+			if NodeGraph.isTransitionNode(nodeInst, buildingName) then
+				segFloor = nil
+			else
+				segFloor = NodeGraph.getPathFloor(nodeInst, buildingName) or preferFloor
+			end
+
+			if not moveTo(nodeInst.Position, offset, segStart, nodeInst.Position, segFloor, "node-chain") then
+				return false
+			end
+		end
+
+		return true
+	end
+
+	local function moveDirectlyToWaypoint(wp, offset, debugLabel)
+		return moveTo(wp.Position, offset, rootPart.Position, wp.Position, nil, debugLabel)
+	end
+
+	local function holdAtWaypoint(wp, offset)
+		if humanoid.Health <= 0 then return false end
 		local holdDuration = wp:GetAttribute("HoldDuration") or 3
+		local finalPos = wp.Position + (offset or Vector3.zero)
 		local held = 0
 		while held < holdDuration do
-			humanoid:MoveTo(wp.Position + (offset or Vector3.zero))
+			if not npcModel.Parent or humanoid.Health <= 0 then
+				return false
+			end
+			humanoid:MoveTo(finalPos)
 			local step = math.min(1, holdDuration - held)
 			task.wait(step)
 			held += step
 		end
+		return true
 	end
 
-	local function handleFinish(wp, offset, floorName)
-		if moveUsingPathfinding(wp.Position, offset, floorName, false) == false then
-			Logger.warn("NPC", string.format(
-				"%s: pathfinding to Finish waypoint failed; stopping",
-				npcModel.Name
-			))
-			return false
-		end
+	local function stayAtFinishWaypoint(wp, offset)
 		task.spawn(function()
 			local finalPos = wp.Position + (offset or Vector3.zero)
 			while npcModel.Parent and humanoid.Health > 0 do
@@ -807,7 +860,6 @@ function NPCWaypointFollower.start(npcModel)
 				task.wait(1)
 			end
 		end)
-		return false  -- signals run() to stop iterating
 	end
 
 	-- ─── Main runner ──────────────────────────────────────────────────────────
@@ -843,88 +895,93 @@ function NPCWaypointFollower.start(npcModel)
 		local waypoints = collectWaypoints(buildingName, eventType)
 		if #waypoints == 0 then return end
 
-		-- Seed currentNode from the NPC's starting floor
+		local firstEntry = waypoints[1]
+		local firstWaypoint = firstEntry.part
+
+		-- Seed currentNode from the NPC's starting floor. This is the "Primer Nodo"
+		-- in the route contract: spawn uses Roblox pathfinding to reach it, then
+		-- graph nodes are traversed with plain MoveTo.
 		local currentNode = NodeGraph.getNearestNodeOnFloor(rootPart.Position, buildingName, preferFloor)
 		if not currentNode then
 			currentNode = NodeGraph.getNearestNode(rootPart.Position, buildingName)
 		end
 
-		-- First leg: pathfind from spawn to the initial node
+		-- Spawn -> Primer Nodo: Pathfinding.
 		if currentNode and (rootPart.Position - currentNode.Position).Magnitude > ARRIVE_RADIUS then
-			moveUsingPathfinding(currentNode.Position, offset, preferFloor, false)
+			if not moveUsingPathfinding(currentNode.Position, offset, nil, false) then
+				Logger.warn("NPC", string.format(
+					"%s: pathfinding from spawn to first node failed; stopping",
+					npcModel.Name
+				))
+				return
+			end
 		end
 
-		-- ── Waypoint loop ───────────────────────────────────────────────────────
+		-- Primer Nodo -> ... -> Nodo cercano al primer waypoint: MoveTo node chain.
+		local firstPath, firstTargetNode = getRouteToPosition(
+			currentNode,
+			firstWaypoint.Position,
+			buildingName,
+			firstEntry.floorName
+		)
 
-		for _, entry in ipairs(waypoints) do
+		if firstPath and #firstPath > 0 then
+			if not moveAlongNodePath(firstPath, buildingName, preferFloor, offset) then
+				Logger.warn("NPC", string.format(
+					"%s: node-chain movement to first waypoint node failed; stopping",
+					npcModel.Name
+				))
+				return
+			end
+		else
+			Logger.warn("NPC", string.format(
+				"%s: no graph path to first waypoint node; continuing with direct first-waypoint pathfinding",
+				npcModel.Name
+			))
+		end
+
+		-- Nodo cercano -> Primer Waypoint: Pathfinding.
+		if not moveUsingPathfinding(firstWaypoint.Position, offset, nil, false) then
+			Logger.warn("NPC", string.format(
+				"%s: pathfinding from first waypoint node to %s failed; stopping",
+				npcModel.Name,
+				firstWaypoint.Name
+			))
+			return
+		end
+
+		local firstType = firstWaypoint:GetAttribute("WaypointType") or "Transit"
+		if firstType == "Hold" then
+			if not holdAtWaypoint(firstWaypoint, offset) then return end
+		elseif firstType == "Finish" then
+			stayAtFinishWaypoint(firstWaypoint, offset)
+			return
+		end
+
+		-- Primer Waypoint -> demas waypoints: direct MoveTo, with segment-based
+		-- door scans active on every movement tick.
+		for index = 2, #waypoints do
 			if not npcModel.Parent then return end
 			if humanoid.Health <= 0 then return end
 
-			local wp     = entry.part
+			local entry = waypoints[index]
+			local wp = entry.part
 			local wpType = wp:GetAttribute("WaypointType") or "Transit"
-			local wpFloor = entry.floorName
 
-			-- Resolve path from currentNode to the nearest node to this waypoint.
-			-- No floor constraint on the target — the graph routes across floors
-			-- automatically through Floor1u2 staircase nodes.
-			local path, targetNode = getRouteToPosition(currentNode, wp.Position, buildingName, wpFloor)
-
-			-- Walk the node path
-			if path and #path > 0 then
-				for i, nodeInst in ipairs(path) do
-					if not npcModel.Parent or humanoid.Health <= 0 then return end
-
-					local segStart = (i == 1) and rootPart.Position or path[i - 1].Position
-
-					-- Floor for door detection: nil on staircase nodes so all
-					-- nearby doors are considered (stairs can have doors too)
-					local segFloor
-					if NodeGraph.isTransitionNode(nodeInst, buildingName) then
-						segFloor = nil
-					else
-						segFloor = NodeGraph.getPathFloor(nodeInst, buildingName) or preferFloor
-					end
-
-					moveTo(nodeInst.Position, offset, segStart, nodeInst.Position, segFloor)
-				end
-			else
-				-- No graph path: move directly (last-resort fallback)
+			if not moveDirectlyToWaypoint(wp, offset, "waypoint-chain") then
 				Logger.warn("NPC", string.format(
-					"%s: no graph path to %s — falling back to direct movement",
-					npcModel.Name, wp.Name
+					"%s: direct MoveTo to %s failed; stopping",
+					npcModel.Name,
+					wp.Name
 				))
-				moveTo(wp.Position, offset, rootPart.Position, wp.Position, preferFloor)
+				return
 			end
 
-			-- Derive the floor at the end of this segment
-			local arrivalFloor = wpFloor
-				or (targetNode and NodeGraph.getPathFloor(targetNode, buildingName))
-				or preferFloor
-
-			-- Waypoint-specific behaviour after graph traversal
 			if wpType == "Hold" then
-				if handleHold(wp, offset, arrivalFloor) == false then return end
+				if not holdAtWaypoint(wp, offset) then return end
 			elseif wpType == "Finish" then
-				if handleFinish(wp, offset, arrivalFloor) == false then return end
-			else
-				-- Transit (default): do a final precise step to the waypoint position.
-				-- The node path brings NPCs close; this step lands them exactly on target.
-				if moveUsingPathfinding(wp.Position, offset, arrivalFloor, false) == false then
-					Logger.warn("NPC", string.format(
-						"%s: pathfinding to Transit waypoint failed; stopping",
-						npcModel.Name
-					))
-					return
-				end
-			end
-
-			-- Advance currentNode for the next iteration
-			if targetNode then
-				currentNode = targetNode
-			else
-				-- Re-anchor to nearest node from current position
-				currentNode = NodeGraph.getNearestNodeOnFloor(rootPart.Position, buildingName, arrivalFloor)
-					or NodeGraph.getNearestNode(rootPart.Position, buildingName)
+				stayAtFinishWaypoint(wp, offset)
+				return
 			end
 		end
 	end
