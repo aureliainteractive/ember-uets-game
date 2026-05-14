@@ -44,7 +44,7 @@ local DOOR_ROUTE_SEARCH_RADIUS   = 18
 local AUTO_OFFSET_RADIUS          = 2.25
 local STUCK_TIME_BEFORE_NUDGE     = 1.0
 local STUCK_MOVEMENT_EPSILON      = 0.05
-local STUCK_NUDGE_RADIUS          = 2.0
+local STUCK_NUDGE_RADIUS          = 0.75
 
 local PATHFINDING_TIMEOUT         = 18
 local MAX_CONCURRENT_PATHS        = 8
@@ -61,6 +61,7 @@ local doorCacheRebuilding = false
 local DOOR_CACHE_UPDATE_INTERVAL = 30
 local activePathComputes = 0
 local pathCache = {}
+local fallbackNpcDebugCounter = 0
 
 local function isLikelyFloorName(name)
 	local text = tostring(name or "")
@@ -321,6 +322,13 @@ function NPCWaypointFollower.start(npcModel)
 	if not humanoid or not rootPart then
 		Logger.warn("NPC", "Missing Humanoid or HumanoidRootPart in " .. npcModel.Name)
 		return
+	end
+
+	if not npcModel:GetAttribute("NPCDebugId") then
+		fallbackNpcDebugCounter += 1
+		local debugId = string.format("manual-%04d", fallbackNpcDebugCounter)
+		npcModel:SetAttribute("NPCDebugId", debugId)
+		npcModel.Name = string.format("%s_%s", npcModel.Name, debugId)
 	end
 
 	-- Ensure the humanoid can actually move
@@ -658,7 +666,12 @@ function NPCWaypointFollower.start(npcModel)
 			if stagnantTime >= STUCK_TIME_BEFORE_NUDGE then
 				local phase = nudgePhase + elapsed * 2
 				local nudge = Vector3.new(math.cos(phase), 0, math.sin(phase)) * STUCK_NUDGE_RADIUS
-				commandedGoal = finalGoal + nudge
+				local nudgedGoal = finalGoal + nudge
+				if NodeGraph.isSegmentNavigable(rootPart.Position, nudgedGoal, { npcModel }) then
+					commandedGoal = nudgedGoal
+				else
+					commandedGoal = finalGoal
+				end
 				humanoid:MoveTo(commandedGoal)
 				stagnantTime = 0
 			end
@@ -678,8 +691,15 @@ function NPCWaypointFollower.start(npcModel)
 		humanoid:MoveTo(finalGoal)
 		if debugLabel then
 			Logger.debug("NPC", string.format(
-				"%s: MoveTo timeout (%s) goal=(%.1f, %.1f, %.1f)",
-				npcModel.Name, debugLabel, finalGoal.X, finalGoal.Y, finalGoal.Z
+				"%s: MoveTo timeout (%s) goal=(%.1f, %.1f, %.1f) current=(%.1f, %.1f, %.1f)",
+				npcModel.Name,
+				debugLabel,
+				finalGoal.X,
+				finalGoal.Y,
+				finalGoal.Z,
+				rootPart.Position.X,
+				rootPart.Position.Y,
+				rootPart.Position.Z
 			))
 		end
 		return false

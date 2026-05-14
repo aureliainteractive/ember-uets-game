@@ -22,6 +22,7 @@
 --   Workspace.NPC_Spawns.<BuildingName>   — BaseParts used as spawn positions
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PhysicsService = game:GetService("PhysicsService")
 local NPCFollowerController = require(script.Parent:WaitForChild("NPCFollowerController"))
 
 -- ─── CONFIG ─────────────────────────────────────────────────────────────
@@ -31,6 +32,7 @@ local BATCH_INTERVAL = 0.15
 local NPC_FOLDER_NAME = "SpawnedNPCs"
 local SPAWNS_FOLDER = "NPC_Spawns"
 local NPCS_FOLDER_NAME = "NPCs"
+local NPC_COLLISION_GROUP = "NPCs"
 
 local FORMAL_MEN_PANTS_ID = "rbxassetid://11801108237"
 local DIARY_PANTS_ID = "rbxassetid://140366176953306"
@@ -85,8 +87,33 @@ local activeGroups = {}
 local NPCSpawner = {}
 local rng = Random.new()
 local npcsRoot = ReplicatedStorage:WaitForChild(NPCS_FOLDER_NAME)
+local collisionGroupReady = false
 
 -- ─── HELPERS ─────────────────────────────────────────────────────────────
+
+local function ensureNpcCollisionGroup()
+	if collisionGroupReady then return end
+	collisionGroupReady = true
+
+	pcall(function()
+		PhysicsService:RegisterCollisionGroup(NPC_COLLISION_GROUP)
+	end)
+	pcall(function()
+		PhysicsService:CollisionGroupSetCollidable(NPC_COLLISION_GROUP, NPC_COLLISION_GROUP, false)
+	end)
+end
+
+local function configureNpcPhysics(npc)
+	ensureNpcCollisionGroup()
+
+	for _, descendant in ipairs(npc:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			descendant.CollisionGroup = NPC_COLLISION_GROUP
+			descendant.Anchored = false
+			descendant:SetNetworkOwner(nil)
+		end
+	end
+end
 
 local function getWeightedSkinTone()
 	local total = 0
@@ -465,6 +492,10 @@ function NPCSpawner.spawn(config)
 				if not npc then
 					continue
 				end
+				local baseName = npc.Name
+				local debugId = string.format("%s-%04d", key, spawned)
+				npc.Name = string.format("%s_%04d", baseName, spawned)
+				npc:SetAttribute("NPCDebugId", debugId)
 
 				local sp = spawns[rng:NextInteger(1, #spawns)]
 				local cf = sp.cframe or (sp.part and sp.part.CFrame) or CFrame.new(0, 5, 0)
@@ -488,12 +519,13 @@ function NPCSpawner.spawn(config)
 					h.AutoRotate = true
 					h.PlatformStand = false
 					h.Sit = false
+					h.DisplayName = npc.Name
 				end
 
 				npc.Parent = group
+				configureNpcPhysics(npc)
 				local rootPart = npc:FindFirstChild("HumanoidRootPart")
 				if rootPart and rootPart:IsA("BasePart") then
-					rootPart.Anchored = false
 					rootPart:SetNetworkOwner(nil)
 				end
 				NPCFollowerController.activate(npc)
