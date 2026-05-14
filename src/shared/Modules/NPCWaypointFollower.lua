@@ -50,8 +50,8 @@ local PATHFINDING_TIMEOUT         = 18
 local MAX_CONCURRENT_PATHS        = 8
 local PATHFINDING_SLOT_LOG_DELAY  = 1.5
 local PATH_CACHE_TTL              = 120
-local MAX_PATH_WAYPOINTS          = 45
-local MAX_SPAWN_PATH_WAYPOINTS    = 28
+local MAX_PATH_WAYPOINTS          = 90
+local MAX_SPAWN_PATH_WAYPOINTS    = 90
 
 -- ─── Global door cache ────────────────────────────────────────────────────────
 
@@ -619,7 +619,8 @@ function NPCWaypointFollower.start(npcModel)
 
 	local function moveTo(targetPos, offset, segmentStart, segmentEnd, floorName, debugLabel)
 		local effectiveOffset = offset or Vector3.zero
-		local goal    = targetPos + effectiveOffset
+		local finalGoal = targetPos + effectiveOffset
+		local commandedGoal = finalGoal
 		local reached = false
 
 		local stagnantTime = 0
@@ -630,9 +631,9 @@ function NPCWaypointFollower.start(npcModel)
 			if didReach then reached = true end
 		end)
 
-		humanoid:MoveTo(goal)
+		humanoid:MoveTo(commandedGoal)
 
-		local distance = (rootPart.Position - goal).Magnitude
+		local distance = (rootPart.Position - finalGoal).Magnitude
 		local speed = math.max(humanoid.WalkSpeed, 1)
 		local timeout = math.clamp(distance / speed + 3, 4, MOVETO_TIMEOUT)
 		local elapsed = 0
@@ -641,7 +642,7 @@ function NPCWaypointFollower.start(npcModel)
 				conn:Disconnect()
 				return false
 			end
-			if reached or (rootPart.Position - goal).Magnitude <= ARRIVE_RADIUS then
+			if reached or (rootPart.Position - finalGoal).Magnitude <= ARRIVE_RADIUS then
 				conn:Disconnect()
 				return true
 			end
@@ -657,8 +658,8 @@ function NPCWaypointFollower.start(npcModel)
 			if stagnantTime >= STUCK_TIME_BEFORE_NUDGE then
 				local phase = nudgePhase + elapsed * 2
 				local nudge = Vector3.new(math.cos(phase), 0, math.sin(phase)) * STUCK_NUDGE_RADIUS
-				goal = targetPos + effectiveOffset + nudge
-				humanoid:MoveTo(goal)
+				commandedGoal = finalGoal + nudge
+				humanoid:MoveTo(commandedGoal)
 				stagnantTime = 0
 			end
 
@@ -674,11 +675,11 @@ function NPCWaypointFollower.start(npcModel)
 		end
 
 		conn:Disconnect()
-		humanoid:MoveTo(goal)
+		humanoid:MoveTo(finalGoal)
 		if debugLabel then
 			Logger.debug("NPC", string.format(
 				"%s: MoveTo timeout (%s) goal=(%.1f, %.1f, %.1f)",
-				npcModel.Name, debugLabel, goal.X, goal.Y, goal.Z
+				npcModel.Name, debugLabel, finalGoal.X, finalGoal.Y, finalGoal.Z
 			))
 		end
 		return false
