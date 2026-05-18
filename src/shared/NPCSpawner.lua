@@ -480,6 +480,7 @@ function NPCSpawner.spawn(config)
 			NPCWaypointFollower.prewarmRoutes(building, event, spawns, {
 				logProgress = config.prewarmLogProgress ~= false,
 				spawnRoutes = config.prewarmSpawnRoutes ~= false,
+				nodeRoutes = config.prewarmNodeRoutes ~= false,
 				firstWaypointRoutes = config.prewarmFirstWaypointRoutes ~= false,
 				waypointRoutes = config.prewarmWaypointRoutes ~= false,
 			})

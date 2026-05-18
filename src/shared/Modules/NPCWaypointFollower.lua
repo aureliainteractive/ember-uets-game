@@ -10,9 +10,9 @@
 -- • resolveWaypointFloor has been removed.  The active floor is now derived
 --   from whichever node the NPC currently occupies (NodeGraph.getPathFloor).
 -- • NPCs now follow the route contract:
---   Spawn -> first node via PathfindingService, node chain via MoveTo,
---   nearest node -> first waypoint via PathfindingService, remaining waypoints
---   via MoveTo.
+--   Spawn -> first node via cached PathfindingService, node chain via cached
+--   PathfindingService segments, nearest node -> first waypoint via cached
+--   PathfindingService, remaining waypoints via cached PathfindingService.
 -- • segmentFloor for door detection is derived from the node being traversed;
 --   staircase nodes (isTransitionNode = true) skip floor-based door filtering
 --   so doors at staircase landings are not accidentally excluded.
@@ -52,6 +52,7 @@ local PATHFINDING_SLOT_LOG_DELAY  = 1.5
 local PATH_CACHE_TTL              = 3600
 local MAX_PATH_WAYPOINTS          = 90
 local MAX_SPAWN_PATH_WAYPOINTS    = 90
+local MAX_NODE_SEGMENT_WAYPOINTS  = 32
 
 -- ─── Global door cache ────────────────────────────────────────────────────────
 
@@ -178,6 +179,16 @@ local function computePathIntoCache(fromPos, toPos, floorName, explicitKey, wayp
 		points = serializeWaypoints(waypoints),
 	}
 	return true, "computed", #waypoints
+end
+
+local function getNodeSegmentCacheKey(buildingName, fromNode, toNode)
+	if not fromNode or not toNode then return nil end
+	return string.format(
+		"node:%s:%s:%s",
+		tostring(buildingName),
+		fromNode:GetFullName(),
+		toNode:GetFullName()
+	)
 end
 
 local function resolveWaypointsRoot()
@@ -414,12 +425,13 @@ function NPCWaypointFollower.prewarmRoutes(buildingName, eventType, spawnPoints,
 	end
 	options = options or {}
 	local prewarmSpawnRoutes = options.spawnRoutes ~= false
+	local prewarmNodeRoutes = options.nodeRoutes ~= false
 	local prewarmFirstWaypointRoutes = options.firstWaypointRoutes ~= false
 	local prewarmWaypointRoutes = options.waypointRoutes ~= false
 	local logProgress = options.logProgress ~= false
 
 	rebuildDoorCache()
-	NodeGraph.buildGraphForBuilding(buildingName)
+	local graph = NodeGraph.buildGraphForBuilding(buildingName)
 
 	local waypoints = collectWaypointParts(buildingName, eventType)
 	if #waypoints == 0 then
@@ -435,6 +447,11 @@ function NPCWaypointFollower.prewarmRoutes(buildingName, eventType, spawnPoints,
 	local totalEstimate = 0
 	if prewarmSpawnRoutes then
 		totalEstimate += #(spawnPoints or {})
+	end
+	if prewarmNodeRoutes and graph then
+		for _, edges in ipairs(graph.adjacency or {}) do
+			totalEstimate += #edges
+		end
 	end
 	if prewarmFirstWaypointRoutes then
 		totalEstimate += #(spawnPoints or {})
@@ -474,11 +491,12 @@ function NPCWaypointFollower.prewarmRoutes(buildingName, eventType, spawnPoints,
 
 	if logProgress then
 		Logger.debug("NPC", string.format(
-			"Prewarming routes for %s/%s: estimated=%d spawn=%s firstWaypoint=%s waypointChain=%s",
+			"Prewarming routes for %s/%s: estimated=%d spawn=%s nodeSegments=%s firstWaypoint=%s waypointChain=%s",
 			tostring(buildingName),
 			tostring(eventType),
 			totalEstimate,
 			tostring(prewarmSpawnRoutes),
+			tostring(prewarmNodeRoutes),
 			tostring(prewarmFirstWaypointRoutes),
 			tostring(prewarmWaypointRoutes)
 		))
@@ -504,12 +522,8 @@ function NPCWaypointFollower.prewarmRoutes(buildingName, eventType, spawnPoints,
 			)
 			if not seen[key] then
 				seen[key] = true
-				if NodeGraph.isSegmentNavigable(spawnPos, currentNode.Position) then
-					skippedCount += 1
-				else
-					local resultOk = computePathIntoCache(spawnPos, currentNode.Position, spawnFloor, key, MAX_SPAWN_PATH_WAYPOINTS)
-					note(resultOk)
-				end
+				local resultOk = computePathIntoCache(spawnPos, currentNode.Position, spawnFloor, key, MAX_SPAWN_PATH_WAYPOINTS)
+				note(resultOk)
 			end
 		end
 		if prewarmSpawnRoutes then
@@ -531,17 +545,39 @@ function NPCWaypointFollower.prewarmRoutes(buildingName, eventType, spawnPoints,
 			)
 			if not seen[key] then
 				seen[key] = true
-				if NodeGraph.isSegmentNavigable(firstTargetNode.Position, firstWaypoint.Position) then
-					skippedCount += 1
-				else
-					local resultOk = computePathIntoCache(firstTargetNode.Position, firstWaypoint.Position, targetFloor, key, MAX_PATH_WAYPOINTS)
-					note(resultOk)
-				end
+				local resultOk = computePathIntoCache(firstTargetNode.Position, firstWaypoint.Position, targetFloor, key, MAX_PATH_WAYPOINTS)
+				note(resultOk)
 			end
 		end
 		if prewarmFirstWaypointRoutes then
 			processed += 1
 			reportProgress(false)
+		end
+	end
+
+	if prewarmNodeRoutes and graph then
+		for fromIndex, edges in ipairs(graph.adjacency or {}) do
+			local fromInfo = graph.nodes and graph.nodes[fromIndex]
+			local fromNode = fromInfo and fromInfo.inst
+			for _, edge in ipairs(edges) do
+				local toInfo = graph.nodes and graph.nodes[edge.idx]
+				local toNode = toInfo and toInfo.inst
+				local key = getNodeSegmentCacheKey(buildingName, fromNode, toNode)
+				if key and fromNode and toNode and not seen[key] then
+					seen[key] = true
+					local floorName = toNode and NodeGraph.getPathFloor(toNode, buildingName) or nil
+					local resultOk = computePathIntoCache(
+						fromNode.Position,
+						toNode.Position,
+						floorName,
+						key,
+						MAX_NODE_SEGMENT_WAYPOINTS
+					)
+					note(resultOk)
+				end
+				processed += 1
+				reportProgress(false)
+			end
 		end
 	end
 
@@ -552,12 +588,8 @@ function NPCWaypointFollower.prewarmRoutes(buildingName, eventType, spawnPoints,
 			local key = string.format("waypoint:%s:%s", tostring(buildingName), current:GetFullName())
 			if not seen[key] then
 				seen[key] = true
-				if NodeGraph.isSegmentNavigable(previous.Position, current.Position) then
-					skippedCount += 1
-				else
-					local resultOk = computePathIntoCache(previous.Position, current.Position, nil, key, MAX_PATH_WAYPOINTS)
-					note(resultOk)
-				end
+				local resultOk = computePathIntoCache(previous.Position, current.Position, nil, key, MAX_PATH_WAYPOINTS)
+				note(resultOk)
 			end
 			processed += 1
 			reportProgress(false)
@@ -984,11 +1016,12 @@ function NPCWaypointFollower.start(npcModel)
 		local goal = targetPos + effectiveOffset
 		local deadline = tick() + PATHFINDING_TIMEOUT
 		local startPos = rootPart.Position
-		local canFallback = (allowFallback ~= false)
+		local hasExplicitRoute = explicitCacheKey ~= nil and explicitCacheKey ~= ""
+		local canFallback = (allowFallback == true) and not hasExplicitRoute
 		local cacheKey = makePathCacheKey(startPos, goal, floorName, explicitCacheKey)
 		local waypointLimit = maxWaypoints or MAX_PATH_WAYPOINTS
 
-		if NodeGraph.isSegmentNavigable(rootPart.Position, goal, { npcModel }) then
+		if not hasExplicitRoute and NodeGraph.isSegmentNavigable(rootPart.Position, goal, { npcModel }) then
 			return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "direct-visible")
 		end
 
@@ -1013,7 +1046,9 @@ function NPCWaypointFollower.start(npcModel)
 				local isLast = (nextWaypointIndex == #points)
 				local wpOffset = isLast and offset or nil
 				if not moveTo(wp.position, wpOffset, prevPos, wp.position, floorName, debugLabel) then
-					pathCache[cacheKey] = nil
+					if not hasExplicitRoute then
+						pathCache[cacheKey] = nil
+					end
 					return false
 				end
 				prevPos = wp.position
@@ -1188,7 +1223,9 @@ function NPCWaypointFollower.start(npcModel)
 						npcModel.Name, nextWaypointIndex, wp.Position.X, wp.Position.Y, wp.Position.Z
 					))
 					blockedConn:Disconnect()
-					pathCache[cacheKey] = nil
+					if not hasExplicitRoute then
+						pathCache[cacheKey] = nil
+					end
 					return false
 				end
 				prevPos = wp.Position
@@ -1253,8 +1290,6 @@ function NPCWaypointFollower.start(npcModel)
 				return false
 			end
 
-			local segStart = (i == 1) and rootPart.Position or path[i - 1].Position
-
 			local segFloor
 			if NodeGraph.isTransitionNode(nodeInst, buildingName) then
 				segFloor = nil
@@ -1262,7 +1297,21 @@ function NPCWaypointFollower.start(npcModel)
 				segFloor = NodeGraph.getPathFloor(nodeInst, buildingName) or preferFloor
 			end
 
-			if not moveTo(nodeInst.Position, offset, segStart, nodeInst.Position, segFloor, "node-chain") then
+			if (rootPart.Position - nodeInst.Position).Magnitude <= ARRIVE_RADIUS then
+				continue
+			end
+
+			local previousNode = path[i - 1]
+			local cacheKey = getNodeSegmentCacheKey(buildingName, previousNode, nodeInst)
+
+			if not moveUsingPathfinding(
+				nodeInst.Position,
+				offset,
+				segFloor,
+				false,
+				cacheKey,
+				MAX_NODE_SEGMENT_WAYPOINTS
+			) then
 				return false
 			end
 		end
@@ -1271,16 +1320,11 @@ function NPCWaypointFollower.start(npcModel)
 	end
 
 	local function moveDirectlyToWaypoint(wp, offset, debugLabel)
-		local goal = wp.Position + (offset or Vector3.zero)
-		if NodeGraph.isSegmentNavigable(rootPart.Position, goal, { npcModel }) then
-			return moveTo(wp.Position, offset, rootPart.Position, wp.Position, nil, debugLabel)
-		end
-
 		return moveUsingPathfinding(
 			wp.Position,
 			offset,
 			nil,
-			true,
+			false,
 			string.format("waypoint:%s:%s", tostring(npcModel:GetAttribute("BuildingName")), wp:GetFullName()),
 			MAX_PATH_WAYPOINTS
 		)
@@ -1368,7 +1412,7 @@ function NPCWaypointFollower.start(npcModel)
 				tostring(spawnKey or "unknown"),
 				currentNode:GetFullName()
 			)
-			if not moveUsingPathfinding(currentNode.Position, nil, startFloor, true, firstNodeCacheKey, MAX_SPAWN_PATH_WAYPOINTS) then
+			if not moveUsingPathfinding(currentNode.Position, nil, startFloor, false, firstNodeCacheKey, MAX_SPAWN_PATH_WAYPOINTS) then
 				Logger.warn("NPC", string.format(
 					"%s: movement from spawn to first node failed; stopping",
 					npcModel.Name
@@ -1377,7 +1421,8 @@ function NPCWaypointFollower.start(npcModel)
 			end
 		end
 
-		-- Primer Nodo -> ... -> Nodo cercano al primer waypoint: MoveTo node chain.
+		-- Primer Nodo -> ... -> Nodo cercano al primer waypoint:
+		-- cached node-to-node PathfindingService segments.
 		local firstPath, firstTargetNode = getRouteToPosition(
 			currentNode,
 			firstWaypoint.Position,
@@ -1408,7 +1453,7 @@ function NPCWaypointFollower.start(npcModel)
 			firstTargetNode and firstTargetNode:GetFullName() or "no-node",
 			firstWaypoint:GetFullName()
 		)
-		if not moveUsingPathfinding(firstWaypoint.Position, offset, targetFloor, true, firstWaypointCacheKey, MAX_PATH_WAYPOINTS) then
+		if not moveUsingPathfinding(firstWaypoint.Position, offset, targetFloor, false, firstWaypointCacheKey, MAX_PATH_WAYPOINTS) then
 			Logger.warn("NPC", string.format(
 				"%s: movement from first waypoint node to %s failed; stopping",
 				npcModel.Name,
@@ -1425,8 +1470,8 @@ function NPCWaypointFollower.start(npcModel)
 			return
 		end
 
-		-- Primer Waypoint -> demas waypoints: direct MoveTo, with segment-based
-		-- door scans active on every movement tick.
+		-- Primer Waypoint -> demas waypoints: cached PathfindingService
+		-- segments, with door scans active on every movement tick.
 		for index = 2, #waypoints do
 			if not npcModel.Parent then return end
 			if humanoid.Health <= 0 then return end
