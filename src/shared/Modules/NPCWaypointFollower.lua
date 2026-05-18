@@ -4,8 +4,8 @@
 --
 -- Key changes vs previous version
 -- ────────────────────────────────
--- • Path routes are keyed by stable route identity instead of per-NPC position
---   offsets, so many NPCs can share the same computed route.
+-- • Path routes are keyed by stable route identity, so many NPCs can share
+--   the same computed route.
 -- • NPCs now follow stable cached PathfindingService routes:
 --   Spawn -> first waypoint, then waypoint -> waypoint.
 -- • Graph nodes are still useful as floor/centerline references, but they are
@@ -1023,9 +1023,8 @@ function NPCWaypointFollower.start(npcModel)
 
 	-- ─── Movement ─────────────────────────────────────────────────────────────
 
-	local function moveTo(targetPos, offset, segmentStart, segmentEnd, floorName, debugLabel)
-		local effectiveOffset = offset or Vector3.zero
-		local finalGoal = targetPos + effectiveOffset
+	local function moveTo(targetPos, segmentStart, segmentEnd, floorName, debugLabel)
+		local finalGoal = targetPos
 		local commandedGoal = finalGoal
 		local reached = false
 
@@ -1109,10 +1108,9 @@ function NPCWaypointFollower.start(npcModel)
 		return false
 	end
 
-	local function moveUsingPathfinding(targetPos, offset, floorName, allowFallback, explicitCacheKey, maxWaypoints)
-		local effectiveOffset = offset or Vector3.zero
+	local function moveUsingPathfinding(targetPos, floorName, allowFallback, explicitCacheKey, maxWaypoints)
 		local hasExplicitRoute = explicitCacheKey ~= nil and explicitCacheKey ~= ""
-		local goal = hasExplicitRoute and targetPos or (targetPos + effectiveOffset)
+		local goal = targetPos
 		local deadline = tick() + PATHFINDING_TIMEOUT
 		local startPos = rootPart.Position
 		local canFallback = (allowFallback == true) and not hasExplicitRoute
@@ -1127,7 +1125,7 @@ function NPCWaypointFollower.start(npcModel)
 		end
 
 		if NodeGraph.isSegmentNavigable(rootPart.Position, goal, { npcModel }) then
-			return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "direct-visible")
+			return moveTo(targetPos, rootPart.Position, goal, floorName, "direct-visible")
 		end
 
 		Logger.debug("NPC", string.format(
@@ -1148,9 +1146,7 @@ function NPCWaypointFollower.start(npcModel)
 				if wp.action == Enum.PathWaypointAction.Jump then
 					humanoid.Jump = true
 				end
-				local isLast = (nextWaypointIndex == #points)
-				local wpOffset = isLast and offset or nil
-				if not moveTo(wp.position, wpOffset, prevPos, wp.position, floorName, debugLabel) then
+				if not moveTo(wp.position, prevPos, wp.position, floorName, debugLabel) then
 					if not hasExplicitRoute then
 						pathCache[cacheKey] = nil
 					end
@@ -1223,7 +1219,7 @@ function NPCWaypointFollower.start(npcModel)
 				end
 				if tick() >= deadline then
 					if canFallback and canUseDirectFallback() then
-						return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-slot-deadline")
+						return moveTo(targetPos, rootPart.Position, goal, floorName, "path-slot-deadline")
 					end
 					pathCache[cacheKey] = nil
 					return false
@@ -1268,7 +1264,7 @@ function NPCWaypointFollower.start(npcModel)
 				if canFallback then
 					if canUseDirectFallback() then
 						pathCache[cacheKey] = nil
-						return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-fallback")
+						return moveTo(targetPos, rootPart.Position, goal, floorName, "path-fallback")
 					end
 					pathCache[cacheKey] = nil
 					return false
@@ -1287,7 +1283,7 @@ function NPCWaypointFollower.start(npcModel)
 				if canFallback then
 					if canUseDirectFallback() then
 						pathCache[cacheKey] = nil
-						return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-empty")
+						return moveTo(targetPos, rootPart.Position, goal, floorName, "path-empty")
 					end
 					pathCache[cacheKey] = nil
 					return false
@@ -1335,9 +1331,7 @@ function NPCWaypointFollower.start(npcModel)
 				if wp.Action == Enum.PathWaypointAction.Jump then
 					humanoid.Jump = true
 				end
-				local isLast = (nextWaypointIndex == #waypoints)
-				local wpOffset = isLast and offset or nil
-				local okMove = moveTo(wp.Position, wpOffset, prevPos, wp.Position, floorName, "path-segment")
+				local okMove = moveTo(wp.Position, prevPos, wp.Position, floorName, "path-segment")
 				if not okMove then
 					Logger.debug("NPC", string.format(
 						"%s: moveTo waypoint %d failed; pos=(%.1f, %.1f, %.1f)",
@@ -1362,7 +1356,7 @@ function NPCWaypointFollower.start(npcModel)
 		if canFallback then
 			if canUseDirectFallback() then
 				pathCache[cacheKey] = nil
-				return moveTo(targetPos, offset, rootPart.Position, goal, floorName, "path-timeout")
+				return moveTo(targetPos, rootPart.Position, goal, floorName, "path-timeout")
 			end
 			pathCache[cacheKey] = nil
 			return false
@@ -1378,13 +1372,13 @@ function NPCWaypointFollower.start(npcModel)
 	-- ─── Pathfinding helpers ──────────────────────────────────────────────────
 
 	local function moveToWaypointSegment(wp)
-		return moveTo(wp.Position, nil, rootPart.Position, wp.Position, nil, "waypoint-chain")
+		return moveTo(wp.Position, rootPart.Position, wp.Position, nil, "waypoint-chain")
 	end
 
-	local function holdAtWaypoint(wp, offset)
+	local function holdAtWaypoint(wp)
 		if humanoid.Health <= 0 then return false end
 		local holdDuration = wp:GetAttribute("HoldDuration") or 3
-		local finalPos = wp.Position + (offset or Vector3.zero)
+		local finalPos = wp.Position
 		local held = 0
 		while held < holdDuration do
 			if not npcModel.Parent or humanoid.Health <= 0 then
@@ -1398,9 +1392,9 @@ function NPCWaypointFollower.start(npcModel)
 		return true
 	end
 
-	local function stayAtFinishWaypoint(wp, offset)
+	local function stayAtFinishWaypoint(wp)
 		task.spawn(function()
-			local finalPos = wp.Position + (offset or Vector3.zero)
+			local finalPos = wp.Position
 			while npcModel.Parent and humanoid.Health > 0 do
 				humanoid:MoveTo(finalPos)
 				task.wait(1)
@@ -1454,7 +1448,7 @@ function NPCWaypointFollower.start(npcModel)
 
 		if referenceNode and not hasArrivedAt(rootPart.Position, referenceNode.Position) then
 			local spawnNodeKey = getSpawnToNodeCacheKey(buildingName, eventType, startFloor, spawnKey, referenceNode)
-			if not moveUsingPathfinding(referenceNode.Position, nil, nil, false, spawnNodeKey, MAX_ROUTE_PATH_WAYPOINTS) then
+			if not moveUsingPathfinding(referenceNode.Position, nil, false, spawnNodeKey, MAX_ROUTE_PATH_WAYPOINTS) then
 				Logger.warn("NPC", string.format(
 					"%s: movement from spawn to reference node failed; stopping",
 					npcModel.Name
@@ -1476,7 +1470,7 @@ function NPCWaypointFollower.start(npcModel)
 					nodeKey = getNodeSegmentCacheKey(buildingName, referenceNode, nodePart)
 				end
 
-				if not moveUsingPathfinding(nodePart.Position, nil, nil, false, nodeKey, MAX_NODE_SEGMENT_WAYPOINTS) then
+				if not moveUsingPathfinding(nodePart.Position, nil, false, nodeKey, MAX_NODE_SEGMENT_WAYPOINTS) then
 					Logger.warn("NPC", string.format(
 						"%s: movement through reference node route failed; stopping",
 						npcModel.Name
@@ -1488,7 +1482,7 @@ function NPCWaypointFollower.start(npcModel)
 
 		if targetNode then
 			local nodeWaypointKey = getNodeToWaypointCacheKey(buildingName, eventType, targetNode, firstWaypoint)
-			if not moveUsingPathfinding(firstWaypoint.Position, nil, nil, false, nodeWaypointKey, MAX_PATH_WAYPOINTS) then
+			if not moveUsingPathfinding(firstWaypoint.Position, nil, false, nodeWaypointKey, MAX_PATH_WAYPOINTS) then
 				Logger.warn("NPC", string.format(
 					"%s: movement from reference route to %s failed; stopping",
 					npcModel.Name,
@@ -1504,7 +1498,7 @@ function NPCWaypointFollower.start(npcModel)
 				spawnKey,
 				firstWaypoint
 			)
-			if not moveUsingPathfinding(firstWaypoint.Position, nil, nil, false, firstWaypointCacheKey, MAX_ROUTE_PATH_WAYPOINTS) then
+			if not moveUsingPathfinding(firstWaypoint.Position, nil, false, firstWaypointCacheKey, MAX_ROUTE_PATH_WAYPOINTS) then
 				Logger.warn("NPC", string.format(
 					"%s: movement from spawn to %s failed; stopping",
 					npcModel.Name,
@@ -1516,9 +1510,9 @@ function NPCWaypointFollower.start(npcModel)
 
 		local firstType = firstWaypoint:GetAttribute("WaypointType") or "Transit"
 		if firstType == "Hold" then
-			if not holdAtWaypoint(firstWaypoint, nil) then return end
+			if not holdAtWaypoint(firstWaypoint) then return end
 		elseif firstType == "Finish" then
-			stayAtFinishWaypoint(firstWaypoint, nil)
+			stayAtFinishWaypoint(firstWaypoint)
 			return
 		end
 
@@ -1542,9 +1536,9 @@ function NPCWaypointFollower.start(npcModel)
 			end
 
 			if wpType == "Hold" then
-				if not holdAtWaypoint(wp, nil) then return end
+				if not holdAtWaypoint(wp) then return end
 			elseif wpType == "Finish" then
-				stayAtFinishWaypoint(wp, nil)
+				stayAtFinishWaypoint(wp)
 				return
 			end
 		end

@@ -11,7 +11,6 @@
 --     count         = 20,
 --     walkSpeed     = 10,        -- optional, default 10
 --     maxStartDelay = 12,        -- optional, seconds — spread NPC starts over this window
---     offsetRadius  = 0,         -- optional, studs — max random XZ offset per NPC
 --   })
 --
 --   require(game.ReplicatedStorage.Shared.NPCSpawner).despawn("MiguelRua", "EarthquakeSimulation")
@@ -374,15 +373,6 @@ end
 
 -- ─── SPAWN SYSTEM ────────────────────────────────────────────────────────
 
-local function randomOffset(radius)
-	if not radius or radius <= 0 then
-		return Vector3.zero
-	end
-	local angle = rng:NextNumber(0, math.pi * 2)
-	local dist = rng:NextNumber(0, radius)
-	return Vector3.new(math.cos(angle) * dist, 0, math.sin(angle) * dist)
-end
-
 local function normalizeName(value)
 	return string.lower(tostring(value or "")):gsub("[^%w]", "")
 end
@@ -464,7 +454,6 @@ function NPCSpawner.spawn(config)
 	local count = config.count or 100
 	local speed = config.walkSpeed or 10
 	local delayMax = config.maxStartDelay or 12
-	local radius = config.offsetRadius or 0
 
 	local key = building .. "_" .. event
 	if activeGroups[key] then
@@ -510,7 +499,7 @@ function NPCSpawner.spawn(config)
 				local sp = spawns[rng:NextInteger(1, #spawns)]
 				local cf = sp.cframe or (sp.part and sp.part.CFrame) or CFrame.new(0, 5, 0)
 
-				npc:PivotTo(cf + randomOffset(radius))
+				npc:PivotTo(cf)
 
 				npc:SetAttribute("BuildingName", building)
 				if sp.floorName then
