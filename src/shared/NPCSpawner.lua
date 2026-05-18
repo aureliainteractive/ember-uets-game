@@ -11,7 +11,7 @@
 --     count         = 20,
 --     walkSpeed     = 10,        -- optional, default 10
 --     maxStartDelay = 12,        -- optional, seconds — spread NPC starts over this window
---     offsetRadius  = 2.5,       -- optional, studs — max random XZ offset per NPC
+--     offsetRadius  = 0,         -- optional, studs — max random XZ offset per NPC
 --   })
 --
 --   require(game.ReplicatedStorage.Shared.NPCSpawner).despawn("MiguelRua", "EarthquakeSimulation")
@@ -464,7 +464,7 @@ function NPCSpawner.spawn(config)
 	local count = config.count or 100
 	local speed = config.walkSpeed or 10
 	local delayMax = config.maxStartDelay or 12
-	local radius = config.offsetRadius or 2.5
+	local radius = config.offsetRadius or 0
 
 	local key = building .. "_" .. event
 	if activeGroups[key] then
@@ -480,8 +480,7 @@ function NPCSpawner.spawn(config)
 			NPCWaypointFollower.prewarmRoutes(building, event, spawns, {
 				logProgress = config.prewarmLogProgress ~= false,
 				spawnRoutes = config.prewarmSpawnRoutes ~= false,
-				nodeRoutes = config.prewarmNodeRoutes ~= false,
-				firstWaypointRoutes = config.prewarmFirstWaypointRoutes ~= false,
+				nodeRoutes = config.prewarmNodeRoutes == true,
 				waypointRoutes = config.prewarmWaypointRoutes ~= false,
 			})
 		end
