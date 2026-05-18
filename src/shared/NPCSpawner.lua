@@ -1,8 +1,7 @@
 -- NPCSpawner
 -- Location : ServerScriptService
 -- Purpose  : Clone and activate up to 2500 NPCs from ReplicatedStorage,
---            distributing them across spawn points and staggering their start
---            so the server doesn't spike on a single frame.
+--            distributing them across spawn points.
 --
 -- Usage (fire from any server script or BindableEvent):
 --   require(game.ReplicatedStorage.Shared.NPCSpawner).spawn({
@@ -10,7 +9,7 @@
 --     eventType     = "EarthquakeSimulation",
 --     count         = 20,
 --     walkSpeed     = 10,        -- optional, default 10
---     maxStartDelay = 12,        -- optional, seconds — spread NPC starts over this window
+--     maxStartDelay = 0,         -- optional, seconds — spread NPC starts over this window
 --   })
 --
 --   require(game.ReplicatedStorage.Shared.NPCSpawner).despawn("MiguelRua", "EarthquakeSimulation")
@@ -27,8 +26,8 @@ local NPCWaypointFollower = require(script.Parent:WaitForChild("Modules"):WaitFo
 
 -- ─── CONFIG ─────────────────────────────────────────────────────────────
 
-local BATCH_SIZE = 8
-local BATCH_INTERVAL = 0.15
+local BATCH_SIZE = 25
+local BATCH_INTERVAL = 0.05
 local NPC_FOLDER_NAME = "SpawnedNPCs"
 local SPAWNS_FOLDER = "NPC_Spawns"
 local NPCS_FOLDER_NAME = "NPCs"
@@ -113,6 +112,28 @@ local function configureNpcPhysics(npc)
 			descendant:SetNetworkOwner(nil)
 		end
 	end
+end
+
+local function getRootSpawnHeight(npc)
+	local humanoid = npc:FindFirstChildOfClass("Humanoid")
+	local rootPart = npc:FindFirstChild("HumanoidRootPart")
+	if humanoid and rootPart and rootPart:IsA("BasePart") then
+		return humanoid.HipHeight + rootPart.Size.Y * 0.5
+	end
+	return 3
+end
+
+local function getSpawnCFrameForNpc(npc, spawn)
+	local cf = spawn.cframe or (spawn.part and spawn.part.CFrame) or CFrame.new(0, 5, 0)
+	if not spawn.part or not spawn.part:IsA("BasePart") then
+		return cf
+	end
+
+	local pos = cf.Position
+	local rotation = cf - pos
+	local groundY = spawn.part.Position.Y + spawn.part.Size.Y * 0.5
+	local rootY = groundY + getRootSpawnHeight(npc)
+	return CFrame.new(pos.X, rootY, pos.Z) * rotation
 end
 
 local function getWeightedSkinTone()
@@ -453,7 +474,9 @@ function NPCSpawner.spawn(config)
 	local event = config.eventType
 	local count = config.count or 100
 	local speed = config.walkSpeed or 10
-	local delayMax = config.maxStartDelay or 12
+	local delayMax = config.maxStartDelay or 0
+	local batchSize = config.batchSize or BATCH_SIZE
+	local batchInterval = config.batchInterval or BATCH_INTERVAL
 
 	local key = building .. "_" .. event
 	if activeGroups[key] then
@@ -481,7 +504,7 @@ function NPCSpawner.spawn(config)
 				return
 			end
 
-			for i = 1, BATCH_SIZE do
+			for i = 1, batchSize do
 				if spawned >= count then
 					break
 				end
@@ -497,7 +520,7 @@ function NPCSpawner.spawn(config)
 				npc:SetAttribute("NPCDebugId", debugId)
 
 				local sp = spawns[rng:NextInteger(1, #spawns)]
-				local cf = sp.cframe or (sp.part and sp.part.CFrame) or CFrame.new(0, 5, 0)
+				local cf = getSpawnCFrameForNpc(npc, sp)
 
 				npc:PivotTo(cf)
 
@@ -530,7 +553,7 @@ function NPCSpawner.spawn(config)
 				NPCFollowerController.activate(npc)
 			end
 
-			task.wait(BATCH_INTERVAL)
+			task.wait(batchInterval)
 		end
 	end)
 end

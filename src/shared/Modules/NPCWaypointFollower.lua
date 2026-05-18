@@ -21,19 +21,20 @@ local NodeGraph = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild(
 
 local ARRIVE_RADIUS    = 2.5   -- studs: "close enough" to a node / waypoint
 local ARRIVE_VERTICAL_TOLERANCE = 7
-local MOVETO_TIMEOUT   = 20    -- max seconds before giving up on a single MoveTo call
+local MOVETO_TIMEOUT   = 30    -- max seconds before giving up on a single MoveTo call
 local TICK_RATE        = 0.1   -- seconds between movement checks
+local MOVETO_REFRESH_INTERVAL = 0.5
 
 local WALK_ANIM_R6  = "rbxassetid://180426354"
 local WALK_ANIM_R15 = "rbxassetid://507777826"
 local WALK_SPEED_THRESHOLD = 0.1
 
 -- Door interaction
-local DOOR_DETECTION_RADIUS      = 10
-local DOOR_TRIGGER_DISTANCE      = 6
+local DOOR_DETECTION_RADIUS      = 16
+local DOOR_TRIGGER_DISTANCE      = 14
 local DOOR_DEBOUNCE_TIME         = 1.5
 local DOOR_SEGMENT_HEIGHT_TOLERANCE = 8
-local DOOR_ROUTE_SEARCH_RADIUS   = 18
+local DOOR_ROUTE_SEARCH_RADIUS   = 26
 
 -- Crowd / anti-clumping
 local STUCK_TIME_BEFORE_NUDGE     = 1.0
@@ -44,9 +45,10 @@ local PATHFINDING_TIMEOUT         = 18
 local MAX_CONCURRENT_PATHS        = 8
 local PATHFINDING_SLOT_LOG_DELAY  = 1.5
 local PATH_CACHE_TTL              = 3600
+local FAILED_PATH_CACHE_TTL       = 10
 local MAX_PATH_WAYPOINTS          = 90
 local MAX_ROUTE_PATH_WAYPOINTS    = 180
-local MAX_NODE_SEGMENT_WAYPOINTS  = 32
+local MAX_NODE_SEGMENT_WAYPOINTS  = 180
 
 -- ─── Global door cache ────────────────────────────────────────────────────────
 
@@ -142,6 +144,16 @@ local function hasArrivedAt(current, goal)
 		and math.abs(current.Y - goal.Y) <= ARRIVE_VERTICAL_TOLERANCE
 end
 
+local function getSpawnPathPosition(spawn)
+	local cf = spawn and spawn.cframe
+	local part = spawn and spawn.part
+	if part and part:IsA("BasePart") then
+		local pos = cf and cf.Position or part.Position
+		return Vector3.new(pos.X, part.Position.Y + part.Size.Y * 0.5 + 3, pos.Z)
+	end
+	return cf and cf.Position or Vector3.new(0, 5, 0)
+end
+
 local function markPathCacheFailed(cacheKey, reason)
 	if not cacheKey then return end
 	pathCache[cacheKey] = {
@@ -157,7 +169,7 @@ local function createDefaultPath()
 		AgentHeight = 5.5,
 		AgentCanJump = false,
 		AgentCanClimb = false,
-		WaypointSpacing = 4,
+		WaypointSpacing = 8,
 		Costs = {
 			DoorPass = 1,
 		},
@@ -523,7 +535,7 @@ function NPCWaypointFollower.prewarmRoutes(buildingName, eventType, spawnPoints,
 	if prewarmSpawnRoutes or prewarmNodeRoutes then
 		for _, spawn in ipairs(spawnPoints or {}) do
 			local spawnPart = spawn.part
-			local spawnPos = spawnPart and spawnPart.Position or (spawn.cframe and spawn.cframe.Position) or Vector3.new(0, 5, 0)
+			local spawnPos = getSpawnPathPosition(spawn)
 			local spawnFloor = spawn.floorName
 			local currentNode = NodeGraph.getNearestNavigableNode(spawnPos, buildingName, spawnFloor)
 				or NodeGraph.getNearestNodeOnFloor(spawnPos, buildingName, spawnFloor)
@@ -588,7 +600,7 @@ function NPCWaypointFollower.prewarmRoutes(buildingName, eventType, spawnPoints,
 
 	for _, spawn in ipairs(spawnPoints or {}) do
 		local spawnPart = spawn.part
-		local spawnPos = spawnPart and spawnPart.Position or (spawn.cframe and spawn.cframe.Position) or Vector3.new(0, 5, 0)
+		local spawnPos = getSpawnPathPosition(spawn)
 		local spawnFloor = spawn.floorName
 		local spawnKey = spawnPart and spawnPart:GetFullName() or string.format("pos:%.1f,%.1f,%.1f", spawnPos.X, spawnPos.Y, spawnPos.Z)
 
@@ -1043,6 +1055,7 @@ function NPCWaypointFollower.start(npcModel)
 		end
 
 		humanoid:MoveTo(commandedGoal)
+		local nextMoveRefresh = tick() + MOVETO_REFRESH_INTERVAL
 
 		local distance = horizontalDistance(rootPart.Position, finalGoal)
 		local speed = math.max(humanoid.WalkSpeed, 1)
@@ -1056,6 +1069,11 @@ function NPCWaypointFollower.start(npcModel)
 			if reached or hasArrivedAt(rootPart.Position, finalGoal) then
 				conn:Disconnect()
 				return true
+			end
+
+			if tick() >= nextMoveRefresh then
+				humanoid:MoveTo(commandedGoal)
+				nextMoveRefresh = tick() + MOVETO_REFRESH_INTERVAL
 			end
 
 			local moved = (rootPart.Position - lastPos).Magnitude
@@ -1162,13 +1180,15 @@ function NPCWaypointFollower.start(npcModel)
 			Logger.debug("NPC", string.format("%s: using cached path with %d waypoints", npcModel.Name, #cached.points))
 			return followCachedWaypoints(cached.points, "cached-path")
 		end
-		if cached and cached.status == "failed" and tick() - cached.updatedAt <= PATH_CACHE_TTL then
+		if cached and cached.status == "failed" and tick() - cached.updatedAt <= FAILED_PATH_CACHE_TTL then
 			Logger.warn("NPC", string.format(
 				"%s: cached path unavailable (%s)",
 				npcModel.Name,
 				tostring(cached.reason or "failed")
 			))
 			return false
+		elseif cached and cached.status == "failed" then
+			pathCache[cacheKey] = nil
 		end
 
 		if cached and cached.status == "computing" then
@@ -1180,13 +1200,15 @@ function NPCWaypointFollower.start(npcModel)
 						Logger.debug("NPC", string.format("%s: using shared path with %d waypoints", npcModel.Name, #latest.points))
 						return followCachedWaypoints(latest.points, "shared-path")
 					end
-					if latest and latest.status == "failed" and tick() - latest.updatedAt <= PATH_CACHE_TTL then
+					if latest and latest.status == "failed" and tick() - latest.updatedAt <= FAILED_PATH_CACHE_TTL then
 						Logger.warn("NPC", string.format(
 							"%s: shared path unavailable (%s)",
 							npcModel.Name,
 							tostring(latest.reason or "failed")
 						))
 						return false
+					elseif latest and latest.status == "failed" then
+						pathCache[cacheKey] = nil
 					end
 					break
 				end
@@ -1243,7 +1265,7 @@ function NPCWaypointFollower.start(npcModel)
 				AgentHeight = agentHeight,
 				AgentCanJump = false,
 				AgentCanClimb = false,
-				WaypointSpacing = 4,
+				WaypointSpacing = 8,
 				Costs = {
 					DoorPass = 1,
 				},
