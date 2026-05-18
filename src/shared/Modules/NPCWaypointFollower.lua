@@ -148,8 +148,7 @@ local function getSpawnPathPosition(spawn)
 	local cf = spawn and spawn.cframe
 	local part = spawn and spawn.part
 	if part and part:IsA("BasePart") then
-		local pos = cf and cf.Position or part.Position
-		return Vector3.new(pos.X, part.Position.Y + part.Size.Y * 0.5 + 3, pos.Z)
+		return cf and cf.Position or part.Position
 	end
 	return cf and cf.Position or Vector3.new(0, 5, 0)
 end

@@ -98,7 +98,7 @@ local function ensureNpcCollisionGroup()
 		PhysicsService:RegisterCollisionGroup(NPC_COLLISION_GROUP)
 	end)
 	pcall(function()
-		PhysicsService:CollisionGroupSetCollidable(NPC_COLLISION_GROUP, NPC_COLLISION_GROUP, false)
+		PhysicsService:CollisionGroupSetCollidable(NPC_COLLISION_GROUP, NPC_COLLISION_GROUP, true)
 	end)
 end
 
@@ -114,26 +114,9 @@ local function configureNpcPhysics(npc)
 	end
 end
 
-local function getRootSpawnHeight(npc)
-	local humanoid = npc:FindFirstChildOfClass("Humanoid")
-	local rootPart = npc:FindFirstChild("HumanoidRootPart")
-	if humanoid and rootPart and rootPart:IsA("BasePart") then
-		return humanoid.HipHeight + rootPart.Size.Y * 0.5
-	end
-	return 3
-end
-
-local function getSpawnCFrameForNpc(npc, spawn)
+local function getSpawnCFrameForNpc(spawn)
 	local cf = spawn.cframe or (spawn.part and spawn.part.CFrame) or CFrame.new(0, 5, 0)
-	if not spawn.part or not spawn.part:IsA("BasePart") then
-		return cf
-	end
-
-	local pos = cf.Position
-	local rotation = cf - pos
-	local groundY = spawn.part.Position.Y + spawn.part.Size.Y * 0.5
-	local rootY = groundY + getRootSpawnHeight(npc)
-	return CFrame.new(pos.X, rootY, pos.Z) * rotation
+	return cf
 end
 
 local function getWeightedSkinTone()
@@ -520,7 +503,7 @@ function NPCSpawner.spawn(config)
 				npc:SetAttribute("NPCDebugId", debugId)
 
 				local sp = spawns[rng:NextInteger(1, #spawns)]
-				local cf = getSpawnCFrameForNpc(npc, sp)
+				local cf = getSpawnCFrameForNpc(sp)
 
 				npc:PivotTo(cf)
 
