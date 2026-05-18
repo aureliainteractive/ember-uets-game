@@ -187,14 +187,14 @@ local function computePathIntoCache(fromPos, toPos, floorName, explicitKey, wayp
 		path:ComputeAsync(fromPos, toPos)
 	end)
 	if not ok or path.Status ~= Enum.PathStatus.Success then
-		markPathCacheFailed(cacheKey, err or path.Status)
+		pathCache[cacheKey] = nil
 		return false, tostring(err or path.Status), 0
 	end
 
 	local waypoints = path:GetWaypoints()
 	local limit = waypointLimit or MAX_PATH_WAYPOINTS
 	if #waypoints == 0 or #waypoints > limit then
-		markPathCacheFailed(cacheKey, string.format("waypoints=%d limit=%d", #waypoints, limit))
+		pathCache[cacheKey] = nil
 		return false, string.format("waypoints=%d limit=%d", #waypoints, limit), #waypoints
 	end
 
@@ -1149,6 +1149,7 @@ function NPCWaypointFollower.start(npcModel)
 			"%s: pathfinding from (%.1f, %.1f, %.1f) to (%.1f, %.1f, %.1f)",
 			npcModel.Name, startPos.X, startPos.Y, startPos.Z, goal.X, goal.Y, goal.Z
 		))
+		tryOpenDoorsOnSegment(startPos, goal, floorName)
 
 		local function canUseDirectFallback()
 			return NodeGraph.isSegmentNavigable(rootPart.Position, goal, { npcModel })
@@ -1282,6 +1283,10 @@ function NPCWaypointFollower.start(npcModel)
 					tostring(path.Status),
 					canFallback and "; falling back to direct move" or "; strict mode"
 				))
+				if canUseDirectFallback() then
+					pathCache[cacheKey] = nil
+					return moveTo(targetPos, rootPart.Position, goal, floorName, "strict-direct-visible")
+				end
 				if canFallback then
 					if canUseDirectFallback() then
 						pathCache[cacheKey] = nil
