@@ -139,6 +139,22 @@ local function horizontalDistance(a, b)
 	return math.sqrt(dx * dx + dz * dz)
 end
 
+local function formatVec3(pos)
+	if not pos then return "nil" end
+	return string.format("(%.1f, %.1f, %.1f)", pos.X, pos.Y, pos.Z)
+end
+
+local function getShortInstancePath(inst)
+	if not inst then return "none" end
+	local parts = {}
+	local current = inst
+	while current and current ~= workspace and #parts < 5 do
+		table.insert(parts, 1, current.Name)
+		current = current.Parent
+	end
+	return table.concat(parts, ".")
+end
+
 local function hasArrivedAt(current, goal)
 	return horizontalDistance(current, goal) <= ARRIVE_RADIUS
 		and math.abs(current.Y - goal.Y) <= ARRIVE_VERTICAL_TOLERANCE
@@ -928,6 +944,96 @@ function NPCWaypointFollower.start(npcModel)
 		end
 	end
 
+	local function hasDoorPassModifier(inst)
+		local current = inst
+		while current do
+			local modifier = current:FindFirstChild("DoorPathfindingModifier")
+			if modifier and modifier:IsA("PathfindingModifier") and modifier.Label == "DoorPass" then
+				return true
+			end
+			current = current.Parent
+		end
+		return false
+	end
+
+	local function describeFirstSegmentBlocker(segStart, segEnd)
+		local origin = segStart + Vector3.new(0, 2.5, 0)
+		local target = segEnd + Vector3.new(0, 2.5, 0)
+		local direction = target - origin
+		if direction.Magnitude <= 0.05 then return "none" end
+
+		local ignore = { npcModel }
+		local nodesRoot = workspace:FindFirstChild("NPC_Nodes")
+		if nodesRoot then table.insert(ignore, nodesRoot) end
+
+		for _ = 1, 10 do
+			local params = RaycastParams.new()
+			params.FilterType = Enum.RaycastFilterType.Exclude
+			params.FilterDescendantsInstances = ignore
+			local result = workspace:Raycast(origin, direction, params)
+			if not result then
+				return "none"
+			end
+
+			local hit = result.Instance
+			if not hit or hasDoorPassModifier(hit) or (hit:IsA("BasePart") and not hit.CanCollide) then
+				table.insert(ignore, hit)
+			else
+				return string.format("%s at %s", getShortInstancePath(hit), formatVec3(result.Position))
+			end
+		end
+
+		return "too-many-ignored-hits"
+	end
+
+	local function getNearestDoorSummary(segStart, segEnd, floorName)
+		if tick() - doorCacheLastUpdate > DOOR_CACHE_UPDATE_INTERVAL then rebuildDoorCache() end
+		local bestDoor = nil
+		local bestDist = math.huge
+
+		for _, doorModel in ipairs(doorCache) do
+			if not doorModel or not doorModel.Parent then continue end
+			if not doorMatchesFloor(doorModel, floorName) then continue end
+			local doorPos = getDoorPosition(doorModel)
+			if not doorPos then continue end
+			local dist = segmentDistanceToPoint(segStart, segEnd, doorPos)
+			if dist < bestDist then
+				bestDoor = doorModel
+				bestDist = dist
+			end
+		end
+
+		if not bestDoor then return "none" end
+		local doorPos = getDoorPosition(bestDoor)
+		return string.format(
+			"%s dist=%.1f yDelta=%.1f open=%s floor=%s pos=%s",
+			getShortInstancePath(bestDoor),
+			bestDist,
+			doorPos and math.abs(doorPos.Y - ((segStart.Y + segEnd.Y) * 0.5)) or -1,
+			tostring(getDoorOpenState(bestDoor)),
+			tostring(bestDoor:GetAttribute("FloorName") or getDoorFloorName(bestDoor)),
+			formatVec3(doorPos)
+		)
+	end
+
+	local function logPathDiagnostic(label, segStart, segEnd, floorName, cacheKey, extra)
+		Logger.warn("NPC", string.format(
+			"%s: path diag [%s] start=%s goal=%s hDist=%.1f yDelta=%.1f direct=%s blocker=%s nearestDoor=%s state=%s cache=%s%s",
+			npcModel.Name,
+			tostring(label),
+			formatVec3(segStart),
+			formatVec3(segEnd),
+			horizontalDistance(segStart, segEnd),
+			math.abs(segStart.Y - segEnd.Y),
+			tostring(NodeGraph.isSegmentNavigable(segStart, segEnd, { npcModel })),
+			describeFirstSegmentBlocker(segStart, segEnd),
+			getNearestDoorSummary(segStart, segEnd, floorName),
+			tostring(humanoid:GetState()),
+			tostring(cacheKey or "none"),
+			extra and (" " .. extra) or ""
+		))
+	end
+
 	local function findDoorGatewayBetween(fromPos, toPos, floorName)
 		if tick() - doorCacheLastUpdate > DOOR_CACHE_UPDATE_INTERVAL then rebuildDoorCache() end
 
@@ -1111,7 +1217,7 @@ function NPCWaypointFollower.start(npcModel)
 		humanoid:MoveTo(finalGoal)
 		if debugLabel then
 			Logger.debug("NPC", string.format(
-				"%s: MoveTo timeout (%s) goal=(%.1f, %.1f, %.1f) current=(%.1f, %.1f, %.1f)",
+				"%s: MoveTo timeout (%s) goal=(%.1f, %.1f, %.1f) current=(%.1f, %.1f, %.1f) remaining=%.1f yDelta=%.1f state=%s",
 				npcModel.Name,
 				debugLabel,
 				finalGoal.X,
@@ -1119,8 +1225,12 @@ function NPCWaypointFollower.start(npcModel)
 				finalGoal.Z,
 				rootPart.Position.X,
 				rootPart.Position.Y,
-				rootPart.Position.Z
+				rootPart.Position.Z,
+				horizontalDistance(rootPart.Position, finalGoal),
+				math.abs(rootPart.Position.Y - finalGoal.Y),
+				tostring(humanoid:GetState())
 			))
+			logPathDiagnostic("moveto-timeout/" .. tostring(debugLabel), rootPart.Position, finalGoal, floorName, nil, nil)
 		end
 		return false
 	end
@@ -1186,6 +1296,7 @@ function NPCWaypointFollower.start(npcModel)
 				npcModel.Name,
 				tostring(cached.reason or "failed")
 			))
+			logPathDiagnostic("cached-failed", rootPart.Position, goal, floorName, cacheKey, "reason=" .. tostring(cached.reason or "failed"))
 			return false
 		elseif cached and cached.status == "failed" then
 			pathCache[cacheKey] = nil
@@ -1206,6 +1317,7 @@ function NPCWaypointFollower.start(npcModel)
 							npcModel.Name,
 							tostring(latest.reason or "failed")
 						))
+						logPathDiagnostic("shared-path-failed", rootPart.Position, goal, floorName, cacheKey, "reason=" .. tostring(latest.reason or "failed"))
 						return false
 					elseif latest and latest.status == "failed" then
 						pathCache[cacheKey] = nil
@@ -1283,6 +1395,13 @@ function NPCWaypointFollower.start(npcModel)
 					tostring(path.Status),
 					canFallback and "; falling back to direct move" or "; strict mode"
 				))
+				logPathDiagnostic("pathfinding-failed", rootPart.Position, goal, floorName, cacheKey, string.format(
+					"status=%s err=%s agentRadius=%.2f agentHeight=%.2f",
+					tostring(path.Status),
+					tostring(err),
+					agentRadius,
+					agentHeight
+				))
 				if canUseDirectFallback() then
 					pathCache[cacheKey] = nil
 					return moveTo(targetPos, rootPart.Position, goal, floorName, "strict-direct-visible")
@@ -1323,6 +1442,7 @@ function NPCWaypointFollower.start(npcModel)
 					"%s: path rejected with %d waypoints (limit=%d)",
 					npcModel.Name, #waypoints, waypointLimit
 				))
+				logPathDiagnostic("path-rejected", rootPart.Position, goal, floorName, cacheKey, string.format("waypoints=%d limit=%d", #waypoints, waypointLimit))
 				failCache(string.format("waypoints=%d limit=%d", #waypoints, waypointLimit))
 				return false
 			end
@@ -1377,6 +1497,7 @@ function NPCWaypointFollower.start(npcModel)
 			if not blockedAhead then
 				return true
 			end
+			logPathDiagnostic("path-blocked", rootPart.Position, goal, floorName, cacheKey, string.format("nextWaypoint=%d", nextWaypointIndex))
 		end
 
 		if canFallback then
