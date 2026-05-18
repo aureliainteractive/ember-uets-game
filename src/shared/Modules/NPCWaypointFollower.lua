@@ -21,6 +21,7 @@ local NodeGraph = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild(
 
 local ARRIVE_RADIUS    = 2.5   -- studs: "close enough" to a node / waypoint
 local ARRIVE_VERTICAL_TOLERANCE = 7
+local PATH_WAYPOINT_SOFT_RADIUS = 8.5
 local MOVETO_TIMEOUT   = 30    -- max seconds before giving up on a single MoveTo call
 local TICK_RATE        = 0.1   -- seconds between movement checks
 local MOVETO_REFRESH_INTERVAL = 0.5
@@ -30,11 +31,11 @@ local WALK_ANIM_R15 = "rbxassetid://507777826"
 local WALK_SPEED_THRESHOLD = 0.1
 
 -- Door interaction
-local DOOR_DETECTION_RADIUS      = 16
-local DOOR_TRIGGER_DISTANCE      = 14
+local DOOR_DETECTION_RADIUS      = 20
+local DOOR_TRIGGER_DISTANCE      = 18
 local DOOR_DEBOUNCE_TIME         = 1.5
 local DOOR_SEGMENT_HEIGHT_TOLERANCE = 8
-local DOOR_ROUTE_SEARCH_RADIUS   = 26
+local DOOR_ROUTE_SEARCH_RADIUS   = 32
 
 -- Crowd / anti-clumping
 local STUCK_TIME_BEFORE_NUDGE     = 1.0
@@ -864,7 +865,7 @@ function NPCWaypointFollower.start(npcModel)
 	end
 
 	local function tryOpenNearbyDoors(floorName)
-		if humanoid.Health <= 0 then return end
+		if humanoid.Health <= 0 then return false end
 		local npcPos = rootPart.Position
 
 		if tick() - doorCacheLastUpdate > DOOR_CACHE_UPDATE_INTERVAL then rebuildDoorCache() end
@@ -895,8 +896,9 @@ function NPCWaypointFollower.start(npcModel)
 		end
 
 		if closestDoor and closestEvent and closestDistance <= DOOR_TRIGGER_DISTANCE then
-			requestDoorOpen(closestDoor, string.format("%.0f studs", closestDistance))
+			return requestDoorOpen(closestDoor, string.format("%.0f studs", closestDistance))
 		end
+		return false
 	end
 
 	local function segmentDistanceToPoint(segStart, segEnd, point)
@@ -908,7 +910,7 @@ function NPCWaypointFollower.start(npcModel)
 	end
 
 	local function tryOpenDoorsOnSegment(segStart, segEnd, floorName)
-		if humanoid.Health <= 0 then return end
+		if humanoid.Health <= 0 then return false end
 		if tick() - doorCacheLastUpdate > DOOR_CACHE_UPDATE_INTERVAL then rebuildDoorCache() end
 
 		local segMidY    = (segStart.Y + segEnd.Y) * 0.5
@@ -940,8 +942,9 @@ function NPCWaypointFollower.start(npcModel)
 		end
 
 		if bestDoor and bestEvent and bestDist <= DOOR_TRIGGER_DISTANCE then
-			requestDoorOpen(bestDoor, "segment")
+			return requestDoorOpen(bestDoor, "segment")
 		end
+		return false
 	end
 
 	local function hasDoorPassModifier(inst)
@@ -1215,6 +1218,25 @@ function NPCWaypointFollower.start(npcModel)
 
 		conn:Disconnect()
 		humanoid:MoveTo(finalGoal)
+		local remaining = horizontalDistance(rootPart.Position, finalGoal)
+		local yDelta = math.abs(rootPart.Position.Y - finalGoal.Y)
+		local canSoftSkip = debugLabel == "path-segment"
+			or debugLabel == "cached-path"
+			or debugLabel == "shared-path"
+		if canSoftSkip
+			and remaining <= PATH_WAYPOINT_SOFT_RADIUS
+			and yDelta <= ARRIVE_VERTICAL_TOLERANCE + 1.5
+			and NodeGraph.isSegmentNavigable(rootPart.Position, finalGoal, { npcModel })
+		then
+			Logger.debug("NPC", string.format(
+				"%s: soft-skipping near path waypoint (%s) remaining=%.1f yDelta=%.1f",
+				npcModel.Name,
+				tostring(debugLabel),
+				remaining,
+				yDelta
+			))
+			return true
+		end
 		if debugLabel then
 			Logger.debug("NPC", string.format(
 				"%s: MoveTo timeout (%s) goal=(%.1f, %.1f, %.1f) current=(%.1f, %.1f, %.1f) remaining=%.1f yDelta=%.1f state=%s",
@@ -1226,8 +1248,8 @@ function NPCWaypointFollower.start(npcModel)
 				rootPart.Position.X,
 				rootPart.Position.Y,
 				rootPart.Position.Z,
-				horizontalDistance(rootPart.Position, finalGoal),
-				math.abs(rootPart.Position.Y - finalGoal.Y),
+				remaining,
+				yDelta,
 				tostring(humanoid:GetState())
 			))
 			logPathDiagnostic("moveto-timeout/" .. tostring(debugLabel), rootPart.Position, finalGoal, floorName, nil, nil)
@@ -1259,7 +1281,13 @@ function NPCWaypointFollower.start(npcModel)
 			"%s: pathfinding from (%.1f, %.1f, %.1f) to (%.1f, %.1f, %.1f)",
 			npcModel.Name, startPos.X, startPos.Y, startPos.Z, goal.X, goal.Y, goal.Z
 		))
-		tryOpenDoorsOnSegment(startPos, goal, floorName)
+		local openedRouteDoor = tryOpenDoorsOnSegment(startPos, goal, floorName)
+		if openedRouteDoor then
+			task.wait(0.75)
+			if NodeGraph.isSegmentNavigable(rootPart.Position, goal, { npcModel }) then
+				return moveTo(targetPos, rootPart.Position, goal, floorName, "door-open-direct")
+			end
+		end
 
 		local function canUseDirectFallback()
 			return NodeGraph.isSegmentNavigable(rootPart.Position, goal, { npcModel })
